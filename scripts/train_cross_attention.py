@@ -17,11 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import fire
 import numpy as np
 
-from src.config import get_config
-from src.data import FMRIDataProcessor, SMRIDataProcessor, match_multimodal_subjects
-from src.models import CrossAttentionTransformer
-from src.utils import run_cross_validation
-from src.evaluation import create_cv_visualizations, save_results
+from config import get_config
+from data import FMRIDataProcessor, SMRIDataProcessor, match_multimodal_subjects
+from models import CrossAttentionTransformer
+from utils import run_cross_validation
+from evaluation import create_cv_visualizations, save_results
 
 
 class CrossAttentionExperiment:

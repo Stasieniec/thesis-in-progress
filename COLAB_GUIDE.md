@@ -89,7 +89,7 @@ drive.mount('/content/drive')
 If you prefer to run code interactively in Colab cells:
 
 ```python
-# Add the repository to Python path
+# Add the src directory to Python path
 import sys
 sys.path.insert(0, '/content/thesis-in-progress/src')
 

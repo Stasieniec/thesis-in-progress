@@ -17,11 +17,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 import fire
 import numpy as np
 
-from src.config import get_config
-from src.data import SMRIDataProcessor
-from src.models import SMRITransformer
-from src.utils import run_cross_validation
-from src.evaluation import create_cv_visualizations, save_results
+from config import get_config
+from data import SMRIDataProcessor
+from models import SMRITransformer
+from utils import run_cross_validation
+from evaluation import create_cv_visualizations, save_results
 
 
 class SMRIExperiment:
