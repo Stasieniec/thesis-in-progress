@@ -249,9 +249,9 @@ class CrossAttentionExperiment:
             'label_mismatches': label_mismatches
         }
 
-    def get_config_template(self):
+    def get_config_template(self, output_dir: str = "./test_output"):
         """Print template configuration for reference."""
-        config = get_config('cross_attention')
+        config = get_config('cross_attention', output_dir=Path(output_dir))
         print("📋 Cross-Attention Configuration Template:")
         print("-" * 40)
         for key, value in config.__dict__.items():

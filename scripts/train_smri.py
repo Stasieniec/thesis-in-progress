@@ -198,9 +198,9 @@ class SMRIExperiment:
         
         return feature_importance
 
-    def get_config_template(self):
+    def get_config_template(self, output_dir: str = "./test_output"):
         """Print template configuration for reference."""
-        config = get_config('smri')
+        config = get_config('smri', output_dir=Path(output_dir))
         print("📋 sMRI Configuration Template:")
         print("-" * 40)
         for key, value in config.__dict__.items():

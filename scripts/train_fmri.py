@@ -151,9 +151,9 @@ class FMRIExperiment:
             verbose=True
         )
 
-    def get_config_template(self):
+    def get_config_template(self, output_dir: str = "./test_output"):
         """Print template configuration for reference."""
-        config = get_config('fmri')
+        config = get_config('fmri', output_dir=Path(output_dir))
         print("📋 fMRI Configuration Template:")
         print("-" * 40)
         for key, value in config.__dict__.items():

@@ -24,6 +24,11 @@ drive.mount('/content/drive')
 ```python
 # Test that everything works
 !python scripts/test_imports.py
+
+# Optional: View configuration templates
+!python scripts/train_fmri.py get_config_template
+!python scripts/train_smri.py get_config_template
+!python scripts/train_cross_attention.py get_config_template
 ```
 
 You should see all green checkmarks (✅) indicating successful imports.
@@ -31,6 +36,7 @@ You should see all green checkmarks (✅) indicating successful imports.
 **Note for Local Testing**: If you're testing locally (not in Colab), use `python3` instead of `python`:
 ```bash
 python3 scripts/test_imports.py
+python3 scripts/train_fmri.py get_config_template
 ```
 
 ## 📊 Running Experiments
@@ -309,6 +315,11 @@ torch.cuda.empty_cache()
 ```bash
 # Test setup
 python scripts/test_imports.py
+
+# View configuration templates
+python scripts/train_fmri.py get_config_template
+python scripts/train_smri.py get_config_template
+python scripts/train_cross_attention.py get_config_template
 
 # Basic runs
 python scripts/train_fmri.py run
