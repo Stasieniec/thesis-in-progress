@@ -14,9 +14,9 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
+# Now import everything
 import fire
 import numpy as np
-
 from config import get_config
 from data import FMRIDataProcessor, SMRIDataProcessor, match_multimodal_subjects
 from models import CrossAttentionTransformer
