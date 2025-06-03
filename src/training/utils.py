@@ -102,21 +102,26 @@ def create_data_loaders(
     Returns:
         Tuple of (train_loader, val_loader)
     """
-    # Choose dataset class
+    # Choose dataset class and prepare parameters
     if dataset_type == 'smri':
         DatasetClass = SMRIDataset
+        # SMRIDataset uses 'noise_factor' instead of 'noise_std'
+        train_dataset = DatasetClass(
+            X_train, y_train,
+            augment=augment_train,
+            noise_factor=noise_std  # Note: noise_factor instead of noise_std
+        )
+        val_dataset = DatasetClass(X_val, y_val, augment=False)
     else:
         DatasetClass = ABIDEDataset
-
-    # Create datasets
-    train_dataset = DatasetClass(
-        X_train, y_train,
-        augment=augment_train,
-        noise_std=noise_std,
-        augment_prob=augment_prob
-    )
-
-    val_dataset = DatasetClass(X_val, y_val, augment=False)
+        # ABIDEDataset uses 'noise_std'
+        train_dataset = DatasetClass(
+            X_train, y_train,
+            augment=augment_train,
+            noise_std=noise_std,
+            augment_prob=augment_prob
+        )
+        val_dataset = DatasetClass(X_val, y_val, augment=False)
 
     # Handle class imbalance with weighted sampling for training
     class_counts = np.bincount(y_train)

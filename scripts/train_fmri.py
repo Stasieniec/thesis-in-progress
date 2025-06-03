@@ -135,19 +135,21 @@ class FMRIExperiment:
         
         return cv_results
 
-    def quick_test(self, num_folds: int = 2, num_epochs: int = 5):
+    def quick_test(self, num_folds: int = 2, num_epochs: int = 5, output_dir: str = "./test_fmri_output"):
         """
         Quick test run with minimal epochs for debugging.
         
         Args:
             num_folds: Number of folds for quick test
             num_epochs: Number of epochs for quick test
+            output_dir: Output directory for test results
         """
         print("🧪 Running quick test...")
         return self.run(
             num_folds=num_folds,
             num_epochs=num_epochs,
             batch_size=32,
+            output_dir=output_dir,
             verbose=True
         )
 
