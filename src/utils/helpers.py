@@ -6,8 +6,8 @@ from typing import Tuple, List, Dict, Any
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from ..training import Trainer, set_seed, create_data_loaders, create_multimodal_data_loaders
-from ..data import MultiModalPreprocessor
+from training import Trainer, set_seed, create_data_loaders, create_multimodal_data_loaders
+from data import MultiModalPreprocessor
 
 
 def get_device(device_preference: str = 'auto') -> torch.device:

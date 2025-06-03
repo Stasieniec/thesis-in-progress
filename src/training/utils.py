@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Tuple, Optional
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
-from ..data import ABIDEDataset, SMRIDataset, MultiModalDataset
+from data import ABIDEDataset, SMRIDataset, MultiModalDataset
 
 
 def set_seed(seed: int = 42):

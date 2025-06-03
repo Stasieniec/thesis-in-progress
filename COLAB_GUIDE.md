@@ -23,7 +23,14 @@ drive.mount('/content/drive')
 
 ```python
 # Test that everything works
-!python scripts/train_fmri.py get_config_template
+!python scripts/test_imports.py
+```
+
+You should see all green checkmarks (✅) indicating successful imports.
+
+**Note for Local Testing**: If you're testing locally (not in Colab), use `python3` instead of `python`:
+```bash
+python3 scripts/test_imports.py
 ```
 
 ## 📊 Running Experiments
@@ -251,9 +258,8 @@ print("="*50)
 # Make sure you're in the right directory
 %cd /content/thesis-in-progress
 
-# Check if src is in path
-import sys
-print(sys.path)
+# Test imports
+!python scripts/test_imports.py
 ```
 
 **2. Data not found:**
@@ -286,10 +292,8 @@ torch.cuda.empty_cache()
 # Get help for any script
 !python scripts/train_fmri.py --help
 
-# Get configuration templates
-!python scripts/train_fmri.py get_config_template
-!python scripts/train_smri.py get_config_template
-!python scripts/train_cross_attention.py get_config_template
+# Test imports
+!python scripts/test_imports.py
 ```
 
 ## 📝 Notes
@@ -303,6 +307,9 @@ torch.cuda.empty_cache()
 ## 🎯 Quick Commands Reference
 
 ```bash
+# Test setup
+python scripts/test_imports.py
+
 # Basic runs
 python scripts/train_fmri.py run
 python scripts/train_smri.py run  
@@ -316,11 +323,6 @@ python scripts/train_cross_attention.py quick_test
 # Data analysis
 python scripts/train_smri.py analyze_features_only
 python scripts/train_cross_attention.py analyze_data_overlap
-
-# Configuration help
-python scripts/train_fmri.py get_config_template
-python scripts/train_smri.py get_config_template
-python scripts/train_cross_attention.py get_config_template
 ```
 
-Happy experimenting! 🚀 
+Happy experimenting! 🚀

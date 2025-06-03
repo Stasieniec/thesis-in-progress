@@ -17,7 +17,7 @@ from sklearn.metrics import (
     roc_auc_score, confusion_matrix
 )
 
-from .utils import EarlyStopping, calculate_class_weights
+from training.utils import EarlyStopping, calculate_class_weights
 
 
 class Trainer:
