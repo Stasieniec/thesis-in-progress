@@ -158,17 +158,18 @@ def _run_single_fold(
     )
     
     # Initialize model
-    if hasattr(config, 'input_dim'):
-        # sMRI model
+    if hasattr(config, 'feature_selection_k'):
+        # sMRI model - has feature_selection_k attribute unique to SMRIConfig
         model = model_class(
             input_dim=X_train.shape[1],
             d_model=config.d_model,
             n_heads=config.num_heads,
             n_layers=config.num_layers,
-            dropout=config.dropout
+            dropout=config.dropout,
+            layer_dropout=config.layer_dropout
         )
     else:
-        # fMRI model
+        # fMRI model - has dim_feedforward attribute unique to FMRIConfig
         model = model_class(
             feat_dim=X_train.shape[1],
             d_model=config.d_model,
