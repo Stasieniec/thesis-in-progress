@@ -5,9 +5,9 @@ Now benefits from ENHANCED sMRI features (97% sMRI accuracy → better cross-att
 
 🎯 EXPECTED IMPROVEMENTS:
 - sMRI features: 49% → 54% accuracy (real data improvements applied)
-- Cross-attention: 63.6% → 67-70% accuracy (NEW IMPROVED ARCHITECTURE!)
-- New features: Adaptive gating, performance-aware fusion, fMRI residual fallback
-- Goal: BEAT pure fMRI (65%) with multimodal approach
+- Cross-attention: 63.6% → 66-68% accuracy (MINIMAL targeted fixes!)
+- New features: Weighted fusion based on known performance (65% vs 54%)
+- Goal: BEAT pure fMRI (65%) with careful improvements
 
 Usage examples:
   python scripts/train_cross_attention.py run                    # Full improved training  
@@ -29,22 +29,22 @@ import fire
 import numpy as np
 from config import get_config
 from data import FMRIDataProcessor, SMRIDataProcessor, match_multimodal_subjects
-from models import ImprovedCrossAttentionTransformer
+from models import CrossAttentionTransformer
 from utils import run_cross_validation
 from evaluation import create_cv_visualizations, save_results
 
 
 class CrossAttentionExperiment:
-    """🚀 IMPROVED Cross-attention experiment designed to BEAT pure fMRI!
+    """🎯 CAREFULLY improved cross-attention to beat pure fMRI baseline.
     
-    NEW ARCHITECTURAL IMPROVEMENTS:
-    - Adaptive modality gating (learns to weight fMRI vs sMRI)
-    - Performance-aware fusion (63% vs 54% performance knowledge)
-    - Residual connection to fMRI (strong modality fallback)
+    MINIMAL TARGETED IMPROVEMENTS:
+    - Weighted fusion based on known performance (65% fMRI vs 54% sMRI)
+    - Reduced dropout for better generalization
+    - Performance-aware feature weighting
     - Enhanced sMRI preprocessing (49% → 54% accuracy)
     
-    GOAL: Beat pure fMRI (65%) with improved multimodal architecture!
-    Expected: 63.6% → 67-70% accuracy
+    GOAL: Beat pure fMRI (65%) with conservative improvements!
+    Expected: 63.6% → 66-68% accuracy (small but consistent gains)
     """
     
     def run(
@@ -107,13 +107,13 @@ class CrossAttentionExperiment:
         )
         
         if verbose:
-            print("🚀 Starting IMPROVED cross-attention multimodal experiment...")
-            print(f"🎯 NEW ARCHITECTURE designed to BEAT pure fMRI (65%)!")
-            print(f"🔧 Features: Adaptive gating + performance-aware fusion + fMRI fallback")
+            print("🎯 Starting CAREFULLY improved cross-attention experiment...")
+            print(f"🎯 MINIMAL fixes designed to beat pure fMRI (65%)!")
+            print(f"🔧 Features: Weighted fusion (65% vs 54%) + reduced dropout")
             print(f"📁 Output directory: {config.output_dir}")
             print(f"🔧 Configuration: {config.num_folds}-fold CV, batch={config.batch_size}, lr={config.learning_rate}")
             print(f"🔧 Architecture: d_model={config.d_model}, cross_layers={config.num_cross_layers}")
-            print(f"💡 Expected improvement: 63.6% → 67-70% (GOAL: > 65%!)")
+            print(f"💡 Expected improvement: 63.6% → 66-68% (GOAL: > 65%!)")
         
         # Load fMRI data
         if verbose:
@@ -170,7 +170,7 @@ class CrossAttentionExperiment:
         cv_results = run_cross_validation(
             features=None,  # Not used for multimodal
             labels=matched_labels,
-            model_class=ImprovedCrossAttentionTransformer,
+            model_class=CrossAttentionTransformer,
             config=config,
             experiment_type='multimodal',
             fmri_features=matched_fmri_features,
@@ -223,26 +223,28 @@ class CrossAttentionExperiment:
             print(f"   ")
             if current_acc > pure_fmri_baseline:
                 print(f"   🎉 SUCCESS! BEAT pure fMRI baseline!")
-            elif current_acc > original_cross_attention + 0.02:
-                print(f"   ✅ SIGNIFICANT IMPROVEMENT! Close to beating fMRI!")
+            elif current_acc > original_cross_attention + 0.015:
+                print(f"   ✅ GOOD IMPROVEMENT! Close to beating fMRI!")
+            elif current_acc > original_cross_attention:
+                print(f"   📈 SMALL IMPROVEMENT made, moving in right direction")
             else:
-                print(f"   📈 PROGRESS made, but more improvements needed")
-            print(f"   Improvements: Adaptive gating + performance-aware fusion + fMRI fallback")
+                print(f"   ⚠️  Need to investigate - performance dropped")
+            print(f"   Improvements: Weighted fusion + reduced dropout + performance weighting")
         
         return cv_results
 
-    def quick_test(self, num_folds: int = 2, num_epochs: int = 5, output_dir: str = "./test_cross_attention_improved_output"):
+    def quick_test(self, num_folds: int = 2, num_epochs: int = 5, output_dir: str = "./test_cross_attention_minimal_improved_output"):
         """
-        🚀 Quick test with NEW ARCHITECTURE designed to beat pure fMRI!
+        🎯 Quick test with MINIMAL improvements designed to beat pure fMRI!
         
         Args:
             num_folds: Number of folds for quick test
             num_epochs: Number of epochs for quick test
             output_dir: Output directory for test results
         """
-        print("🧪 Running IMPROVED cross-attention quick test...")
-        print("🎯 NEW ARCHITECTURE: Adaptive gating + performance-aware fusion!")
-        print("🏆 GOAL: Beat pure fMRI baseline (65%) with multimodal approach!")
+        print("🧪 Running CAREFULLY improved cross-attention quick test...")
+        print("🎯 MINIMAL FIXES: Weighted fusion based on known performance!")
+        print("🏆 GOAL: Beat pure fMRI baseline (65%) with conservative approach!")
         return self.run(
             num_folds=num_folds,
             num_epochs=num_epochs,
