@@ -1,6 +1,6 @@
 """
-Improved sMRI Transformer using working notebook architecture.
-This version achieved 86%+ accuracy vs 55% with the original.
+sMRI Transformer based on the exact working notebook architecture.
+This model achieved ~60% accuracy in the working notebook.
 """
 
 import torch
@@ -8,20 +8,20 @@ import torch.nn as nn
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 
 
-class SMRITransformer(nn.Module):
+class WorkingNotebookSMRITransformer(nn.Module):
     """
-    Improved sMRI Transformer using proven working notebook architecture.
-    Achieves significantly better performance than the original version.
+    Exact reproduction of the sMRI Transformer from working notebook.
+    This architecture achieved ~60% accuracy.
     """
     
     def __init__(self, input_dim, d_model=64, n_heads=4, n_layers=2,
                  dropout=0.3, layer_dropout=0.1):
-        super(SMRITransformer, self).__init__()
+        super(WorkingNotebookSMRITransformer, self).__init__()
 
         self.input_dim = input_dim
         self.d_model = d_model
 
-        # Input projection with batch normalization (KEY IMPROVEMENT)
+        # Input projection with batch normalization (from working notebook)
         self.input_projection = nn.Sequential(
             nn.Linear(input_dim, d_model),
             nn.BatchNorm1d(d_model),
@@ -29,16 +29,16 @@ class SMRITransformer(nn.Module):
             nn.Dropout(dropout)
         )
 
-        # Learnable positional encoding (KEY IMPROVEMENT)
+        # Learnable positional encoding (from working notebook)
         self.pos_embedding = nn.Parameter(torch.randn(1, 1, d_model) * 0.1)
 
-        # Transformer encoder with pre-norm and GELU (KEY IMPROVEMENT)
+        # Transformer encoder with pre-norm and GELU (from working notebook)
         encoder_layer = TransformerEncoderLayer(
             d_model=d_model,
             nhead=n_heads,
-            dim_feedforward=d_model * 2,
+            dim_feedforward=d_model * 2,  # Smaller feedforward to reduce overfitting
             dropout=dropout,
-            activation='gelu',  # GELU instead of ReLU
+            activation='gelu',
             batch_first=True,
             norm_first=True  # Pre-norm for better training stability
         )
@@ -48,10 +48,10 @@ class SMRITransformer(nn.Module):
             enable_nested_tensor=False
         )
 
-        # Layer dropout (KEY IMPROVEMENT)
+        # Layer dropout (from working notebook)
         self.layer_dropout = nn.Dropout(layer_dropout)
 
-        # Classification head with residual connection (KEY IMPROVEMENT)
+        # Classification head with residual connection (from working notebook)
         self.pre_classifier = nn.Sequential(
             nn.LayerNorm(d_model),
             nn.Linear(d_model, d_model // 2),
@@ -61,11 +61,11 @@ class SMRITransformer(nn.Module):
 
         self.classifier = nn.Linear(d_model // 2, 2)
 
-        # Sophisticated weight initialization (KEY IMPROVEMENT)
+        # Weight initialization (from working notebook)
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize weights for optimal performance."""
+        """Initialize weights exactly as in working notebook."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.xavier_uniform_(m.weight)
@@ -76,7 +76,9 @@ class SMRITransformer(nn.Module):
                 nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x):
-        """Forward pass with working notebook architecture."""
+        """Forward pass exactly as in working notebook."""
+        batch_size = x.size(0)
+
         # Project to d_model dimensions
         x = self.input_projection(x)
 
@@ -93,7 +95,7 @@ class SMRITransformer(nn.Module):
         # Global pooling (remove sequence dimension)
         x = x.squeeze(1)  # (batch_size, d_model)
 
-        # Classification with sophisticated head
+        # Classification with residual-like structure
         features = self.pre_classifier(x)
         logits = self.classifier(features)
 
@@ -105,18 +107,9 @@ class SMRITransformer(nn.Module):
         trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
         
         return {
-            'model_name': 'ImprovedSMRITransformer',
+            'model_name': 'WorkingNotebook_sMRI_Transformer',
             'input_dim': self.input_dim,
             'total_params': total_params,
             'trainable_params': trainable_params,
-            'd_model': self.d_model,
-            'improvements': [
-                'BatchNorm in input projection',
-                'Learnable positional embeddings', 
-                'Pre-norm transformer layers',
-                'GELU activation function',
-                'Layer dropout for regularization',
-                'Sophisticated weight initialization',
-                'Improved classification head'
-            ]
-        }
+            'd_model': self.d_model
+        } 

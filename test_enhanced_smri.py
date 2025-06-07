@@ -90,11 +90,24 @@ def test_enhanced_smri():
     print(f"   Input dim: {model_info['input_dim']}")
     
     # Create enhanced data loaders
-    train_loader, val_loader, test_loader = create_data_loaders(
+    train_loader, val_loader = create_data_loaders(
         X_train_processed, y_train,
-        X_val_processed, y_val, 
-        X_test_processed, y_test,
-        config, 'smri'
+        X_val_processed, y_val,
+        batch_size=config.batch_size,
+        augment_train=True,
+        dataset_type='smri'
+    )
+    
+    # Create test loader separately
+    from torch.utils.data import DataLoader
+    from data.datasets import SMRIDataset
+    test_dataset = SMRIDataset(X_test_processed, y_test, augment=False)
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True
     )
     
     # Enhanced training
