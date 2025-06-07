@@ -68,12 +68,15 @@ class SMRIDataProcessor:
         if np.any(np.isnan(X)) or np.any(np.isinf(X)):
             print("Warning: Found NaN/Inf values after cleaning!")
             
-        # Check for constant features
+        # Check for constant features (enhanced from data creation script)
         if X.shape[1] > 1:
             var_mask = np.var(X, axis=0) > 1e-8  # Remove near-constant features
             if not np.all(var_mask):
                 print(f"Removing {np.sum(~var_mask)} near-constant features")
                 X = X[:, var_mask]
+                # Update feature names to match
+                if hasattr(self, 'feature_names') and self.feature_names is not None:
+                    self.feature_names = [name for i, name in enumerate(self.feature_names) if i < len(var_mask) and var_mask[i]]
 
         # Initialize scaler
         if self.scaler_type == 'robust':
@@ -84,11 +87,40 @@ class SMRIDataProcessor:
         # Fit scaler
         X_scaled = self.scaler.fit_transform(X)
 
-        # Feature selection if specified
+        # Feature selection if specified (improved strategy from data creation script)
         if self.feature_selection_k and self.feature_selection_k < X.shape[1]:
-            self.feature_selector = SelectKBest(score_func=f_classif, k=self.feature_selection_k)
-            X_selected = self.feature_selector.fit_transform(X_scaled, y)
-            self.selected_features = self.feature_selector.get_support()
+            print(f"Selecting top {self.feature_selection_k} features using combined F-score + MI...")
+            
+            # Calculate both F-scores and mutual information (like data creation script)
+            f_scores, _ = f_classif(X_scaled, y)
+            mi_scores = mutual_info_classif(X_scaled, y, random_state=42)
+            
+            # Normalize scores to [0,1] range
+            f_scores_norm = (f_scores - f_scores.min()) / (f_scores.max() - f_scores.min() + 1e-8)
+            mi_scores_norm = (mi_scores - mi_scores.min()) / (mi_scores.max() - mi_scores.min() + 1e-8)
+            
+            # Combined score (60% F-score + 40% MI, optimized for sMRI)
+            combined_scores = 0.6 * f_scores_norm + 0.4 * mi_scores_norm
+            
+            # Select top k features
+            top_indices = np.argsort(combined_scores)[-self.feature_selection_k:]
+            
+            # Apply selection
+            X_selected = X_scaled[:, top_indices]
+            
+            # Store for transform method
+            self.selected_features = np.zeros(X_scaled.shape[1], dtype=bool)
+            self.selected_features[top_indices] = True
+            
+            # Create a custom selector that uses these indices
+            class CustomSelector:
+                def __init__(self, selected_features):
+                    self.selected_features = selected_features
+                def transform(self, X):
+                    return X[:, self.selected_features]
+            
+            self.feature_selector = CustomSelector(self.selected_features)
+            
             print(f"Selected {self.feature_selection_k} best features out of {X.shape[1]}")
             return X_selected
         else:

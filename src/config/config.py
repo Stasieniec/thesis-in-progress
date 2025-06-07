@@ -96,14 +96,14 @@ class SMRIConfig(BaseConfig):
     feature_selection_k: int = 300
     scaler_type: str = 'robust'  # 'robust' or 'standard'
     
-    # Model architecture (optimized from working notebook)
+    # Model architecture (optimized from working notebook + data creation insights)
     d_model: int = 64
     num_heads: int = 4
     num_layers: int = 2
     dropout: float = 0.3
     layer_dropout: float = 0.1
     
-    # Training parameters (improved from working notebook)
+    # Training parameters (optimized for sMRI tabular features)
     batch_size: int = 16
     learning_rate: float = 1e-3
     weight_decay: float = 1e-4
@@ -111,8 +111,12 @@ class SMRIConfig(BaseConfig):
     early_stop_patience: int = 20
     warmup_epochs: int = 10
     
-    # Always use class weights for sMRI
+    # sMRI-specific improvements
     use_class_weights: bool = True
+    feature_selection_k: int = 300  # Use more features (like data creation script)
+    scaler_type: str = 'robust'     # RobustScaler like data creation script
+    label_smoothing: float = 0.1
+    gradient_clip_norm: float = 1.0
     
     def __post_init__(self):
         super().__post_init__()
