@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from sklearn.preprocessing import StandardScaler, RobustScaler
-from sklearn.feature_selection import SelectKBest, f_classif
+from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
 
 from data.base_dataset import ABIDEDataset
 
@@ -61,8 +61,19 @@ class SMRIDataProcessor:
         Returns:
             Transformed feature array
         """
-        # Handle any remaining NaN or inf values
+        # Handle any remaining NaN or inf values (improved from working notebook)
         X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+        
+        # Additional data quality checks
+        if np.any(np.isnan(X)) or np.any(np.isinf(X)):
+            print("Warning: Found NaN/Inf values after cleaning!")
+            
+        # Check for constant features
+        if X.shape[1] > 1:
+            var_mask = np.var(X, axis=0) > 1e-8  # Remove near-constant features
+            if not np.all(var_mask):
+                print(f"Removing {np.sum(~var_mask)} near-constant features")
+                X = X[:, var_mask]
 
         # Initialize scaler
         if self.scaler_type == 'robust':
@@ -116,12 +127,16 @@ class SMRIDataProcessor:
 
         # Calculate F-scores
         f_scores, f_pvals = f_classif(X, y)
+        
+        # Calculate mutual information (from working notebook)
+        mi_scores = mutual_info_classif(X, y, random_state=42)
 
         # Create feature importance DataFrame
         feature_importance = pd.DataFrame({
             'feature_name': self.feature_names,
             'f_score': f_scores,
             'f_pval': f_pvals,
+            'mi_score': mi_scores,
         })
 
         # Sort by F-score

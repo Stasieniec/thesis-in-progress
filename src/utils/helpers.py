@@ -136,11 +136,28 @@ def _run_single_fold(
         random_state=config.seed
     )
     
-    # Standardize features
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_val = scaler.transform(X_val)
-    X_test = scaler.transform(X_test_fold)
+    # Apply sMRI-specific preprocessing if needed
+    if hasattr(config, 'feature_selection_k'):
+        # sMRI-specific preprocessing with feature selection
+        from data import SMRIDataProcessor
+        
+        # Create processor for this fold
+        processor = SMRIDataProcessor(
+            data_path=config.smri_data_path,
+            feature_selection_k=config.feature_selection_k,
+            scaler_type=config.scaler_type
+        )
+        
+        # Fit and transform for this fold
+        X_train = processor.fit(X_train, y_train)
+        X_val = processor.transform(X_val)
+        X_test = processor.transform(X_test_fold)
+    else:
+        # Standard preprocessing for fMRI
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_val = scaler.transform(X_val)
+        X_test = scaler.transform(X_test_fold)
     
     if verbose:
         print(f"📊 Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)}")

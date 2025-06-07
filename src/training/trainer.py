@@ -65,10 +65,10 @@ class Trainer:
 
     def _setup_class_weights(self, y_train: np.ndarray):
         """Setup class weights for imbalanced datasets."""
-        if hasattr(self.config, 'use_class_weights') and self.config.use_class_weights:
-            class_weights = calculate_class_weights(y_train, self.device)
-            self.criterion = nn.CrossEntropyLoss(weight=class_weights)
-            print(f"Using class weights: {class_weights}")
+        # Always use class weights for sMRI as it's critical for performance
+        class_weights = calculate_class_weights(y_train, self.device)
+        self.criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
+        print(f"Using class weights: {class_weights} with label smoothing=0.1")
 
     def train_epoch(self, train_loader: DataLoader) -> Dict[str, float]:
         """Train for one epoch."""

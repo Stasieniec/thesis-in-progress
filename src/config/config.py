@@ -96,18 +96,23 @@ class SMRIConfig(BaseConfig):
     feature_selection_k: int = 300
     scaler_type: str = 'robust'  # 'robust' or 'standard'
     
-    # Model architecture
+    # Model architecture (optimized from working notebook)
     d_model: int = 64
     num_heads: int = 4
     num_layers: int = 2
     dropout: float = 0.3
     layer_dropout: float = 0.1
     
-    # Training parameters
+    # Training parameters (improved from working notebook)
     batch_size: int = 16
     learning_rate: float = 1e-3
+    weight_decay: float = 1e-4
     num_epochs: int = 200
     early_stop_patience: int = 20
+    warmup_epochs: int = 10
+    
+    # Always use class weights for sMRI
+    use_class_weights: bool = True
     
     def __post_init__(self):
         super().__post_init__()
@@ -127,19 +132,21 @@ class CrossAttentionConfig(BaseConfig):
     # sMRI parameters  
     smri_feat_selection: int = 300
     
-    # Model architecture
-    d_model: int = 256
-    d_cross: int = 128
-    num_heads: int = 8
-    num_layers: int = 4
-    num_cross_layers: int = 2
-    dropout: float = 0.2
+    # Model architecture (reduced complexity to prevent overfitting)
+    d_model: int = 128  # Reduced from 256
+    d_cross: int = 64   # Reduced from 128
+    num_heads: int = 4  # Reduced from 8
+    num_layers: int = 2 # Reduced from 4
+    num_cross_layers: int = 1  # Reduced from 2
+    dropout: float = 0.3  # Increased dropout
     
-    # Training parameters
+    # Training parameters (improved for stability)
     batch_size: int = 32
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-4  # Increased from 5e-5
+    weight_decay: float = 1e-3   # Increased regularization
     num_epochs: int = 300
     early_stop_patience: int = 30
+    warmup_epochs: int = 15
     
     def __post_init__(self):
         super().__post_init__()

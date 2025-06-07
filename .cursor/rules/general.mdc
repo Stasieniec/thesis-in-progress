@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+This repo holds my bachelor thesis project.
+It is supposed to be cross-attention between sMRI and fMRI.
+This repo is supposed to be used in google colab notebooks - thats why paths lead to google drive folders.
+All the code in context_files is not runnable - this is code for context, but changing it will not affect anything. Its there just so you can see how I did things before.

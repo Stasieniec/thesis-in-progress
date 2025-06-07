@@ -1,5 +1,6 @@
 """Improved sMRI Transformer for structural neuroimaging features."""
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -39,13 +40,16 @@ class SMRITransformer(nn.Module):
         self.input_dim = input_dim
         self.d_model = d_model
 
-        # Input projection with batch normalization
+        # Input projection with better scaling (from working notebook)
         self.input_projection = nn.Sequential(
             nn.Linear(input_dim, d_model),
             nn.BatchNorm1d(d_model),
             nn.ReLU(),
             nn.Dropout(dropout)
         )
+        
+        # Scaling factor for better training stability
+        self.scale = math.sqrt(d_model)
 
         # Learnable [CLS] token (consistent with fMRI approach)
         self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))
@@ -111,8 +115,8 @@ class SMRITransformer(nn.Module):
         """
         batch_size = x.size(0)
 
-        # Project to d_model dimensions
-        x = self.input_projection(x)
+        # Project to d_model dimensions with scaling (from working notebook)
+        x = self.input_projection(x) / self.scale
 
         # Add sequence dimension and reshape for transformer
         x = x.unsqueeze(1)  # (batch_size, 1, d_model)

@@ -105,11 +105,11 @@ def create_data_loaders(
     # Choose dataset class and prepare parameters
     if dataset_type == 'smri':
         DatasetClass = SMRIDataset
-        # SMRIDataset uses 'noise_factor' instead of 'noise_std'
+        # SMRIDataset uses 'noise_factor' instead of 'noise_std' - use smaller noise for sMRI
         train_dataset = DatasetClass(
             X_train, y_train,
             augment=augment_train,
-            noise_factor=noise_std  # Note: noise_factor instead of noise_std
+            noise_factor=0.005  # Smaller noise factor from working notebook
         )
         val_dataset = DatasetClass(X_val, y_val, augment=False)
     else:
