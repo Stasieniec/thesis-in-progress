@@ -113,8 +113,6 @@ class SMRIConfig(BaseConfig):
     
     # sMRI-specific improvements
     use_class_weights: bool = True
-    feature_selection_k: int = 800  # Use more features (like data creation script)
-    scaler_type: str = 'robust'     # RobustScaler like data creation script
     label_smoothing: float = 0.1
     gradient_clip_norm: float = 1.0
     
@@ -134,7 +132,7 @@ class CrossAttentionConfig(BaseConfig):
     fmri_feat_dim: int = 19_900
     
     # sMRI parameters  
-    smri_feat_selection: int = 300
+    smri_feat_selection: int = 800
     
     # Model architecture (reduced complexity to prevent overfitting)
     d_model: int = 128  # Reduced from 256

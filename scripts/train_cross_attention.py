@@ -58,7 +58,7 @@ class CrossAttentionExperiment:
         num_cross_layers: int = 2,
         num_heads: int = 8,
         dropout: float = 0.2,
-        smri_feat_selection: int = 300,
+        smri_feat_selection: int = 800,
         output_dir: str = None,
         seed: int = 42,
         device: str = 'auto',

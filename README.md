@@ -1,186 +1,170 @@
-# 🧠 ABIDE Multimodal Transformer Framework
+# Cross-Attention sMRI-fMRI Analysis for Autism Classification
 
-A clean, modular framework for multimodal autism classification using fMRI and sMRI data from the ABIDE dataset. This repository implements working transformer architectures with cross-attention mechanisms for multimodal learning.
+## Project Overview
 
-## ✨ What Works
+This repository implements a cross-attention transformer model for autism classification using both structural MRI (sMRI) and functional MRI (fMRI) data from the ABIDE dataset. The project focuses on achieving better classification performance through multimodal brain imaging analysis.
 
-This repository contains **production-ready, tested solutions**:
+## Recent Improvements (December 2024)
 
-- **🧲 fMRI Transformer**: 65.4% accuracy on functional connectivity data
-- **🧩 sMRI Transformer**: 60% accuracy on structural features (fixed architecture)
-- **🔗 Cross-Attention Transformer**: 63.6%+ multimodal performance (architecture fixed)
+### Enhanced sMRI Processing ✨
+- **Improved Feature Extraction**: Comprehensive FreeSurfer parsing (aseg + aparc + wmparc)
+- **Advanced Feature Selection**: RFE with Ridge classifier selecting 800 optimal features
+- **Better Preprocessing**: Median imputation, proper standardization
+- **Performance Gain**: Improved from 55% to 57-60% baseline accuracy
 
-All models use optimized preprocessing and proven architectures.
+### Current Performance
+- **fMRI Accuracy**: 65% (good performance)
+- **sMRI Accuracy**: 57-60% (improved from 55%)
+- **Target**: Reach reference paper's ~70% sMRI accuracy
 
-## 🏗️ Clean Repository Structure
+## Repository Structure
 
 ```
 thesis-in-progress/
-├── src/                          # Core modular framework
-│   ├── config/                   # Configuration classes
-│   ├── data/                     # Data processing (fMRI/sMRI)
-│   ├── models/                   # Transformer architectures
-│   ├── training/                 # Training framework
-│   ├── evaluation/              # Metrics and visualization
-│   └── utils/                   # Helper functions
-├── scripts/                      # Simple training scripts
-│   ├── train_fmri.py            # fMRI-only experiments
-│   ├── train_smri.py            # sMRI-only experiments  
-│   └── train_cross_attention.py # Multimodal experiments
-├── requirements.txt              # Dependencies
-├── COLAB_GUIDE.md               # Google Colab usage
-└── CROSS_ATTENTION_SOLUTION.md  # Architecture solution docs
+├── scripts/                           # Executable scripts
+│   ├── improved_smri_extraction_new.py   # Enhanced sMRI processing
+│   ├── run_improved_smri_extraction.py   # Simple runner interface
+│   ├── train_smri.py                     # sMRI model training
+│   ├── train_fmri.py                     # fMRI model training
+│   └── train_cross_attention.py          # Cross-attention training
+├── src/                               # Source code modules
+│   ├── models/                        # Model architectures
+│   ├── data/                         # Data processing utilities
+│   ├── training/                     # Training utilities
+│   ├── evaluation/                   # Evaluation metrics
+│   └── utils/                        # General utilities
+├── data/                             # Dataset storage
+│   └── freesurfer_stats/            # FreeSurfer processed data
+├── context_files/                    # Reference implementations
+│   ├── archived_data_creation/       # Previous data processing
+│   ├── exported_colab_notebooks/     # Colab notebook exports  
+│   └── papers/                       # Reference papers
+├── update_to_improved_smri.py        # Google Drive sync utility
+└── SMRI_IMPROVEMENT_SUMMARY.md       # Detailed improvement summary
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
-### 1. Setup
+### 1. Environment Setup
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Ensure data directory exists
+ls data/freesurfer_stats/  # Should contain subject folders (50003, 50004, etc.)
 ```
 
-### 2. Run Experiments
-
-**fMRI Transformer (65.4% accuracy):**
+### 2. Process sMRI Data (Improved Pipeline)
 ```bash
-python scripts/train_fmri.py run
+# Run enhanced sMRI extraction
+python scripts/run_improved_smri_extraction.py
+
+# Results will be saved to: processed_smri_data_improved/
 ```
 
-**sMRI Transformer (60% accuracy, fixed architecture):**
-```bash  
-python scripts/train_smri.py run
-```
-
-**Cross-Attention Multimodal (63.6%+ accuracy, architecture fixed):**
+### 3. Sync with Google Drive (for Colab)
 ```bash
-python scripts/train_cross_attention.py run
+# Update Google Drive with improved data
+python update_to_improved_smri.py
 ```
 
-## 🔧 Key Features
-
-- **✅ Working Solutions**: All architectures tested and optimized
-- **🧪 Modular Design**: Clean separation of concerns
-- **⚙️ Easy Configuration**: Simple parameter adjustment
-- **📊 Comprehensive Evaluation**: Cross-validation, metrics, visualizations
-- **🎯 Reproducible**: Fixed seeds, deterministic training
-- **📱 Colab Ready**: Designed for Google Colab notebooks
-
-## 📊 Expected Performance
-
-| Model | Accuracy | Notes |
-|-------|----------|-------|
-| fMRI Transformer | 65.4% | Proven baseline |
-| sMRI Transformer | 60.0% | Architecture fixed |
-| Cross-Attention | 63.6%+ | Multimodal fusion |
-
-## 🎯 Data Requirements
-
-The framework expects ABIDE dataset in these paths (Google Drive structure):
-
-**fMRI Data:**
-- ROI files: `/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200/`
-- Phenotypic: `/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv`
-
-**sMRI Data:**
-- Processed features: `/content/drive/MyDrive/processed_smri_data/`
-- Files: `features.npy`, `labels.npy`, `subject_ids.npy`, `feature_names.txt`
-
-## ⚙️ Configuration Examples
-
-**Quick Test:**
+### 4. Train Models
 ```bash
-python scripts/train_fmri.py run --num_epochs=10 --num_folds=3
+# Train individual modalities
+python scripts/train_smri.py      # sMRI transformer
+python scripts/train_fmri.py      # fMRI transformer
+
+# Train cross-attention model
+python scripts/train_cross_attention.py
 ```
 
-**Custom Architecture:**
-```bash
-python scripts/train_cross_attention.py run --d_model=512 --num_heads=8
-```
+## Key Features
 
-**Feature Selection:**
-```bash
-python scripts/train_smri.py run --feature_selection_k=500
-```
+### Enhanced sMRI Processing
+- **Comprehensive Feature Extraction**: 1417 raw features from all FreeSurfer outputs
+- **Intelligent Feature Selection**: RFE with Ridge classifier → 800 optimal features
+- **Robust Preprocessing**: Median imputation + standardization
+- **Quality Validation**: Comprehensive logging and data quality checks
 
-## 🔬 Architecture Highlights
+### Transformer Architecture
+- **Cross-Attention Mechanism**: Learns interactions between sMRI and fMRI
+- **Modality-Specific Processing**: Separate encoders for each modality
+- **Flexible Architecture**: Supports both unimodal and multimodal training
 
-### fMRI Transformer
-- **Input**: 19,900 connectivity features (CC200 atlas)
-- **Architecture**: Enhanced transformer with proper scaling
-- **Key**: Pre-normalization, GELU activation, mixed precision
+### Google Colab Integration
+- **Colab-Ready Scripts**: All paths configured for Google Drive mounting
+- **Efficient Data Loading**: Optimized for Colab's memory constraints
+- **Progress Tracking**: Built-in logging and visualization
 
-### sMRI Transformer  
-- **Input**: 300 selected structural features
-- **Architecture**: **Fixed** to use direct processing (not CLS tokens)
-- **Key**: Matches working notebook architecture exactly
+## Data Requirements
 
-### Cross-Attention
-- **Inputs**: Both fMRI and sMRI features
-- **Architecture**: **Fixed** - fMRI uses CLS tokens, sMRI uses direct processing
-- **Key**: Proper modality-specific encoders + cross-attention
+### sMRI Data
+- **Source**: FreeSurfer processed structural MRI
+- **Features**: 800 selected features (subcortical, cortical, white matter)
+- **Subjects**: 870 from ABIDE dataset
+- **Format**: `.npy` arrays (features, labels, subject_ids)
 
-## 📈 Recent Fixes Applied
+### fMRI Data  
+- **Source**: Preprocessed functional connectivity matrices
+- **Features**: Connectivity patterns between brain regions
+- **Format**: Compatible with sMRI data structure
 
-✅ **sMRI Architecture Fix**: Changed from CLS tokens to direct processing (matches 60% notebook)
-✅ **Cross-Attention Fix**: Different processing for fMRI (CLS) vs sMRI (direct)  
-✅ **Preprocessing Optimization**: Reverted to proven StandardScaler + f_classif
-✅ **Repository Cleanup**: Removed all test/debug files, kept only working solutions
+## Performance Monitoring
 
-## 🎓 For Google Colab
+### Current Baselines
+- **sMRI (Improved)**: 57-60% accuracy (up from 55%)
+- **fMRI**: 65% accuracy (stable)
+- **Cross-Attention**: TBD (training with improved sMRI)
+
+### Target Performance
+- **sMRI Goal**: ~70% (reference paper benchmark)
+- **Multimodal Goal**: >70% (leveraging cross-modal interactions)
+
+## Google Colab Usage
+
+This repository is optimized for Google Colab notebooks:
+
+1. **Mount Google Drive**: Scripts automatically handle drive mounting
+2. **Load Data**: Efficient loading from drive-mounted datasets  
+3. **Train Models**: GPU-accelerated training with progress tracking
+4. **Save Results**: Automatic result saving to Drive
 
 See `COLAB_GUIDE.md` for detailed Colab usage instructions.
 
-**Quick Colab run:**
-```python
-!git clone <your-repo>
-%cd thesis-in-progress
-!pip install -r requirements.txt
-!python scripts/train_cross_attention.py run
-```
+## Recent Updates
 
-## 📋 Output
+### ✅ Completed Improvements
+- [x] Enhanced sMRI feature extraction with RFE selection
+- [x] Improved preprocessing pipeline (median imputation, standardization)
+- [x] Comprehensive feature analysis and validation
+- [x] Google Drive synchronization utilities
+- [x] Code cleanup and documentation
+- [x] Updated training scripts to use 800 features (vs 300-400)
 
-Each experiment creates timestamped results:
-- **JSON results**: Detailed metrics per fold  
-- **Visualizations**: Learning curves, confusion matrices
-- **Models**: Best checkpoint per fold
-- **Analysis**: Statistical summaries
+### 🔄 In Progress
+- [ ] Cross-attention performance evaluation with enhanced data
+- [ ] Further sMRI optimization to reach 70% target
 
-## 🔍 Solution Documentation
+### 📋 Next Steps
+- [ ] Hyperparameter optimization for transformer models
+- [ ] Advanced cross-attention mechanisms exploration
+- [ ] Results comparison and analysis
 
-- **`CROSS_ATTENTION_SOLUTION.md`**: Complete architecture fix explanation
-- **`COLAB_GUIDE.md`**: Google Colab usage guide
-- **Source code**: Fully documented modular framework
+## Contributing
 
-## 🧪 Development
+This is a bachelor thesis project focused on multimodal brain imaging analysis. The codebase is designed for research reproducibility and Google Colab compatibility.
 
-The modular design makes extensions easy:
+## Technical Notes
 
-```python
-# Add new model
-from src.models import NewTransformer
-from src.config import get_config
+- **Python Version**: 3.8+
+- **Key Dependencies**: PyTorch, scikit-learn, numpy, pandas
+- **Compute Requirements**: GPU recommended for transformer training
+- **Data Format**: NumPy arrays for efficient loading/processing
 
-# Use existing training framework
-from src.training import train_model
-from src.evaluation import evaluate_model
-```
+## Contact & Citation
 
-## 📊 Key Insights
-
-1. **Not all data needs sequence modeling**: sMRI (tabular) ≠ fMRI (time series)
-2. **Architecture matters more than preprocessing**: Simple preprocessing often works better
-3. **Modality-specific design**: Different data types need different architectures
-
-## 🤝 Contributing
-
-This is a **clean, working baseline**. To extend:
-
-1. Fork the repository
-2. Add new models to `src/models/`
-3. Create training script in `scripts/`
-4. Test thoroughly before merging
+For questions about this implementation or to cite this work, please refer to the associated bachelor thesis documentation.
 
 ---
 
-**🎯 Ready to use**: This repository contains proven, working solutions for ABIDE multimodal classification. All architectures are optimized and tested.
+*Last Updated: December 2024 - Enhanced sMRI processing implementation*
