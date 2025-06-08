@@ -58,8 +58,8 @@ def get_matched_subject_ids(
     
     # Load fMRI subjects
     fmri_processor = FMRIDataProcessor(
-        roi_dir=fmri_roi_dir,
-        pheno_file=phenotypic_file,
+        roi_dir=Path(fmri_roi_dir),
+        pheno_file=Path(phenotypic_file),
         n_rois=200
     )
     fmri_data = fmri_processor.load_all_subjects()
@@ -182,8 +182,8 @@ def get_matched_datasets(
         print("\n📊 Loading and filtering fMRI data...")
     
     fmri_processor = FMRIDataProcessor(
-        roi_dir=fmri_roi_dir,
-        pheno_file=phenotypic_file,
+        roi_dir=Path(fmri_roi_dir),
+        pheno_file=Path(phenotypic_file),
         n_rois=200
     )
     fmri_features, fmri_labels, fmri_subject_ids, _ = fmri_processor.process_all_subjects(verbose=False)
