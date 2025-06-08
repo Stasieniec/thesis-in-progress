@@ -1,6 +1,6 @@
 """Configuration module for ABIDE experiments."""
 
-from config.config import (
+from .config import (
     BaseConfig,
     FMRIConfig,
     SMRIConfig,
