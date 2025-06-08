@@ -286,16 +286,43 @@ def _run_multimodal_fold(
         augment_prob=config.augment_prob
     )
     
-    # Initialize model
-    model = model_class(
-        fmri_dim=fmri_train.shape[1],
-        smri_dim=smri_train.shape[1],
-        d_model=config.d_model,
-        n_heads=config.num_heads,
-        n_layers=config.num_layers,
-        n_cross_layers=config.num_cross_layers,
-        dropout=config.dropout
-    )
+    # Initialize model with appropriate parameters
+    model_name = model_class.__name__
+    
+    if 'AdvancedCrossAttention' in model_name or any(name in model_name for name in 
+        ['Bidirectional', 'Hierarchical', 'Contrastive', 'Adaptive', 'Ensemble']):
+        # Advanced models with specific parameter names
+        model_kwargs = {
+            'fmri_dim': fmri_train.shape[1],
+            'smri_dim': smri_train.shape[1], 
+            'd_model': config.d_model,
+            'dropout': config.dropout
+        }
+        
+        # Add n_heads if the model accepts it
+        import inspect
+        sig = inspect.signature(model_class.__init__)
+        if 'n_heads' in sig.parameters:
+            model_kwargs['n_heads'] = config.num_heads
+        if 'n_cross_layers' in sig.parameters:
+            model_kwargs['n_cross_layers'] = config.num_cross_layers
+        if 'n_ensembles' in sig.parameters:
+            model_kwargs['n_ensembles'] = getattr(config, 'n_ensembles', 3)
+        if 'temperature' in sig.parameters:
+            model_kwargs['temperature'] = getattr(config, 'temperature', 0.1)
+            
+        model = model_class(**model_kwargs)
+    else:
+        # Original models with legacy parameter names
+        model = model_class(
+            fmri_dim=fmri_train.shape[1],
+            smri_dim=smri_train.shape[1],
+            d_model=config.d_model,
+            n_heads=config.num_heads,
+            n_layers=config.num_layers,
+            n_cross_layers=config.num_cross_layers,
+            dropout=config.dropout
+        )
     
     # Initialize trainer
     trainer = Trainer(model, device, config, model_type='multimodal')

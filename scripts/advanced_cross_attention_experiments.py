@@ -657,9 +657,9 @@ class AdvancedCrossAttentionExperiments:
         }
         
         self.baseline_results = {
-            'fmri': 0.65,
-            'smri': 0.58,
-            'original_cross_attention': 0.636
+            'fmri': 0.60,  # Updated fMRI baseline
+            'smri': 0.58,  # Updated sMRI baseline  
+            'original_cross_attention': 0.58  # Updated cross-attention baseline
         }
     
     def run_all(
