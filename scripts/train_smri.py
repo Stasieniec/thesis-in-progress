@@ -114,37 +114,51 @@ class SMRIExperiment:
             print(f"🔧 Feature selection: {feature_selection_k} features, scaler={scaler_type}")
             print(f"🎯 Target: 97% accuracy with improvements!")
         
-        # Load sMRI data
+        # Load sMRI data (MATCHED SUBJECTS ONLY)
         if verbose:
-            print("\n📊 Loading sMRI data...")
+            print("\n📊 Loading sMRI data for MATCHED subjects only...")
+            print("🔗 Ensuring fair comparison with fMRI and cross-attention experiments")
+        
+        # Get matched datasets to ensure fair comparison
+        from utils.subject_matching import get_matched_datasets
         
         try:
             # Try to get config for data paths
-            config = get_config('smri')
-            data_path = config.smri_data_path
-            phenotypic_file = config.phenotypic_file
+            config_smri = get_config('smri')
+            data_path = config_smri.smri_data_path
+            phenotypic_file = config_smri.phenotypic_file
         except:
             # Fallback for Google Colab or different setups
-            data_path = "/content/drive/MyDrive/processed_smri_data"
-            phenotypic_file = "/content/drive/MyDrive/abide_phenotypic.csv"
+            data_path = "/content/drive/MyDrive/processed_smri_data_improved"
+            phenotypic_file = "/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv"
             if verbose:
                 print(f"   Using fallback paths for Google Colab")
         
-        processor = SMRIDataProcessor(
-            data_path=data_path,
-            feature_selection_k=None,  # We'll do feature selection manually
-            scaler_type=scaler_type
-        )
+        # Try improved data first, fallback to original
+        try:
+            matched_data = get_matched_datasets(
+                smri_data_path=data_path,
+                phenotypic_file=phenotypic_file,
+                verbose=verbose
+            )
+        except:
+            # Fallback to original sMRI data
+            matched_data = get_matched_datasets(
+                smri_data_path="/content/drive/MyDrive/processed_smri_data",
+                phenotypic_file=phenotypic_file,
+                verbose=verbose
+            )
         
-        features, labels, subject_ids = processor.process_all_subjects(
-            phenotypic_file=phenotypic_file,
-            verbose=verbose
-        )
+        # Use only the sMRI data from matched subjects
+        features = matched_data['smri_features']
+        labels = matched_data['smri_labels']
+        subject_ids = matched_data['smri_subject_ids']
         
         if verbose:
-            print(f"✅ Loaded {len(features)} subjects")
+            print(f"✅ Using {len(features)} MATCHED subjects (fair comparison)")
             print(f"📊 Original feature dimension: {features.shape[1]}")
             print(f"📊 Class distribution: ASD={np.sum(labels)}, Control={len(labels)-np.sum(labels)}")
+            print(f"📊 Matched with fMRI: {matched_data['num_matched_subjects']} subjects")
         
         # Enhanced Cross-Validation with our improvements
         if verbose:

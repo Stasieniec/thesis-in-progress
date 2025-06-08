@@ -80,22 +80,41 @@ class FMRIExperiment:
             print(f"📁 Output directory: {config.output_dir}")
             print(f"🔧 Configuration: {config.num_folds}-fold CV, batch={config.batch_size}, lr={config.learning_rate}")
         
-        # Load and process fMRI data
+        # Load and process fMRI data (MATCHED SUBJECTS ONLY)
         if verbose:
-            print("\n📊 Loading fMRI data...")
+            print("\n📊 Loading fMRI data for MATCHED subjects only...")
+            print("🔗 Ensuring fair comparison with sMRI and cross-attention experiments")
         
-        processor = FMRIDataProcessor(
-            roi_dir=config.fmri_roi_dir,
-            pheno_file=config.phenotypic_file,
-            n_rois=config.n_rois
-        )
+        # Get matched datasets to ensure fair comparison
+        from utils.subject_matching import get_matched_datasets
         
-        fc_matrices, labels, subject_ids, skipped_ids = processor.process_all_subjects(verbose=verbose)
+        try:
+            # Try to use improved sMRI data
+            matched_data = get_matched_datasets(
+                fmri_roi_dir=config.fmri_roi_dir,
+                smri_data_path="/content/drive/MyDrive/processed_smri_data_improved",
+                phenotypic_file=config.phenotypic_file,
+                verbose=verbose
+            )
+        except:
+            # Fallback to original sMRI data
+            matched_data = get_matched_datasets(
+                fmri_roi_dir=config.fmri_roi_dir,
+                smri_data_path="/content/drive/MyDrive/processed_smri_data",
+                phenotypic_file=config.phenotypic_file,
+                verbose=verbose
+            )
+        
+        # Use only the fMRI data from matched subjects
+        fc_matrices = matched_data['fmri_features']
+        labels = matched_data['fmri_labels']
+        subject_ids = matched_data['fmri_subject_ids']
         
         if verbose:
-            print(f"✅ Loaded {len(fc_matrices)} subjects")
+            print(f"✅ Using {len(fc_matrices)} MATCHED subjects (fair comparison)")
             print(f"📊 Feature dimension: {fc_matrices.shape[1]}")
             print(f"📊 Class distribution: ASD={np.sum(labels)}, Control={len(labels)-np.sum(labels)}")
+            print(f"📊 Matched with sMRI: {matched_data['num_matched_subjects']} subjects")
         
         # Run cross-validation
         if verbose:

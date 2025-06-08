@@ -115,53 +115,46 @@ class CrossAttentionExperiment:
             print(f"🔧 Architecture: d_model={config.d_model}, cross_layers={config.num_cross_layers}")
             print(f"💡 Expected improvement: 63.6% → 66-68% (GOAL: > 65%!)")
         
-        # Load fMRI data
+        # Load matched datasets (SAME SUBJECTS AS fMRI AND sMRI EXPERIMENTS)
         if verbose:
-            print("\n📊 Loading fMRI data...")
+            print("\n📊 Loading MATCHED datasets for fair comparison...")
+            print("🔗 Using SAME subjects as fMRI-only and sMRI-only experiments")
         
-        fmri_processor = FMRIDataProcessor(
-            roi_dir=config.fmri_roi_dir,
-            pheno_file=config.phenotypic_file,
-            n_rois=config.n_rois
-        )
+        # Get matched datasets to ensure fair comparison with other experiments
+        from utils.subject_matching import get_matched_datasets
         
-        fmri_data = fmri_processor.load_all_subjects()
+        try:
+            # Try to use improved sMRI data
+            matched_data = get_matched_datasets(
+                fmri_roi_dir=config.fmri_roi_dir,
+                smri_data_path="/content/drive/MyDrive/processed_smri_data_improved",
+                phenotypic_file=config.phenotypic_file,
+                verbose=verbose
+            )
+        except:
+            # Fallback to original sMRI data
+            matched_data = get_matched_datasets(
+                fmri_roi_dir=config.fmri_roi_dir,
+                smri_data_path="/content/drive/MyDrive/processed_smri_data",
+                phenotypic_file=config.phenotypic_file,
+                verbose=verbose
+            )
         
-        if verbose:
-            print(f"✅ Loaded {len(fmri_data)} fMRI subjects")
-        
-        # Load sMRI data with IMPROVED preprocessing
-        if verbose:
-            print("📊 Loading sMRI data with ENHANCED preprocessing...")
-            print("   🔧 Using: RobustScaler + combined F-score + MI selection")
-        
-        smri_processor = SMRIDataProcessor(
-            data_path=config.smri_data_path,
-            feature_selection_k=config.smri_feat_selection,  # Enhanced feature selection
-            scaler_type='robust'  # Proven best for FreeSurfer data
-        )
-        
-        smri_data = smri_processor.load_all_subjects(config.phenotypic_file)
-        
-        if verbose:
-            print(f"✅ Loaded {len(smri_data)} sMRI subjects")
-        
-        # Match subjects between modalities
-        if verbose:
-            print("\n🔗 Matching subjects between modalities...")
-        
-        matched_fmri_features, matched_smri_features, matched_labels, matched_subject_ids = match_multimodal_subjects(
-            fmri_data, smri_data, verbose=verbose
-        )
+        # Extract matched features for cross-attention
+        matched_fmri_features = matched_data['fmri_features']
+        matched_smri_features = matched_data['smri_features']
+        matched_labels = matched_data['fmri_labels']  # Labels are the same for both modalities
+        matched_subject_ids = matched_data['fmri_subject_ids']
         
         if len(matched_labels) == 0:
             raise ValueError("No subjects with matching labels found between modalities!")
         
         if verbose:
-            print(f"✅ Matched {len(matched_labels)} subjects")
+            print(f"✅ Using {len(matched_labels)} MATCHED subjects (same as other experiments)")
             print(f"📊 fMRI feature dim: {matched_fmri_features.shape[1]}")
             print(f"📊 sMRI feature dim: {matched_smri_features.shape[1]}")
             print(f"📊 Class distribution: ASD={np.sum(matched_labels)}, Control={len(matched_labels)-np.sum(matched_labels)}")
+            print(f"📊 Consistent with fMRI and sMRI experiments: {matched_data['num_matched_subjects']} subjects")
         
         # Run cross-validation
         if verbose:

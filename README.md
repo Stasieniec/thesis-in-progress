@@ -140,6 +140,7 @@ See `COLAB_GUIDE.md` for detailed Colab usage instructions.
 - [x] Google Drive synchronization utilities
 - [x] Code cleanup and documentation
 - [x] Updated training scripts to use 800 features (vs 300-400)
+- [x] **FAIR COMPARISON: All experiments now use same matched subjects**
 
 ### 🔄 In Progress
 - [ ] Cross-attention performance evaluation with enhanced data
