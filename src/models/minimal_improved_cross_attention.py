@@ -47,20 +47,33 @@ class CrossModalAttention(nn.Module):
 
 
 class ModalitySpecificEncoder(nn.Module):
-    """Modality-specific transformer encoder (UNCHANGED)."""
+    """Modality-specific transformer encoder with sMRI architecture fix."""
 
-    def __init__(self, input_dim: int, d_model: int, n_heads: int, n_layers: int, dropout: float = 0.1):
+    def __init__(self, input_dim: int, d_model: int, n_heads: int, n_layers: int, dropout: float = 0.1, use_cls_token: bool = True):
         super().__init__()
+        
+        self.use_cls_token = use_cls_token
 
         # Input projection
-        self.input_projection = nn.Sequential(
-            nn.Linear(input_dim, d_model),
-            nn.LayerNorm(d_model),
-            nn.Dropout(dropout)
-        )
-
-        # Learnable [CLS] token
-        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))
+        if use_cls_token:
+            # Original approach for fMRI (sequence-like data)
+            self.input_projection = nn.Sequential(
+                nn.Linear(input_dim, d_model),
+                nn.LayerNorm(d_model),
+                nn.Dropout(dropout)
+            )
+            # Learnable [CLS] token for fMRI
+            self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))
+        else:
+            # Working notebook approach for sMRI (tabular data)
+            self.input_projection = nn.Sequential(
+                nn.Linear(input_dim, d_model),
+                nn.BatchNorm1d(d_model),  # BatchNorm1d like working notebook
+                nn.ReLU(),                # ReLU like working notebook
+                nn.Dropout(dropout)
+            )
+            # Positional embedding for single position (working notebook approach)
+            self.pos_embedding = nn.Parameter(torch.randn(1, 1, d_model) * 0.1)
 
         # Transformer layers
         self.layers = nn.ModuleList([
@@ -80,20 +93,35 @@ class ModalitySpecificEncoder(nn.Module):
         # Project input
         x = self.input_projection(x)
 
-        # Add sequence dimension if needed
-        if len(x.shape) == 2:
-            x = x.unsqueeze(1)
+        if self.use_cls_token:
+            # Original fMRI approach with CLS tokens
+            # Add sequence dimension if needed
+            if len(x.shape) == 2:
+                x = x.unsqueeze(1)
 
-        # Add [CLS] token
-        batch_size = x.size(0)
-        cls_tokens = self.cls_token.expand(batch_size, -1, -1)
-        x = torch.cat([cls_tokens, x], dim=1)
+            # Add [CLS] token
+            batch_size = x.size(0)
+            cls_tokens = self.cls_token.expand(batch_size, -1, -1)
+            x = torch.cat([cls_tokens, x], dim=1)
 
-        # Pass through transformer layers
-        for layer in self.layers:
-            x = layer(x)
+            # Pass through transformer layers
+            for layer in self.layers:
+                x = layer(x)
+                
+            return x  # (batch_size, seq_len+1, d_model)
+        else:
+            # Working notebook sMRI approach - direct processing
+            # Add sequence dimension and positional embedding (working notebook style)
+            x = x.unsqueeze(1)  # (batch_size, 1, d_model)
+            x = x + self.pos_embedding
 
-        return x
+            # Pass through transformer layers
+            for layer in self.layers:
+                x = layer(x)
+
+            # Global pooling (working notebook style) - squeeze back to (batch, d_model)
+            x = x.squeeze(1)  # (batch_size, d_model)
+            return x
 
 
 class MinimalImprovedCrossAttentionTransformer(nn.Module):
@@ -123,12 +151,12 @@ class MinimalImprovedCrossAttentionTransformer(nn.Module):
         self.smri_dim = smri_dim
         self.d_model = d_model
 
-        # UNCHANGED: Modality-specific encoders
+        # FIXED: Modality-specific encoders with sMRI architecture fix
         self.fmri_encoder = ModalitySpecificEncoder(
-            fmri_dim, d_model, n_heads, n_layers // 2, dropout
+            fmri_dim, d_model, n_heads, n_layers // 2, dropout, True  # fMRI uses CLS tokens
         )
         self.smri_encoder = ModalitySpecificEncoder(
-            smri_dim, d_model, n_heads, n_layers // 2, dropout
+            smri_dim, d_model, n_heads, n_layers // 2, dropout, False  # sMRI uses direct processing
         )
 
         # UNCHANGED: Cross-attention layers  
@@ -190,9 +218,12 @@ class MinimalImprovedCrossAttentionTransformer(nn.Module):
         return_attention: bool = False
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
         """Forward pass with minimal improvements."""
-        # UNCHANGED: Encode each modality
+        # FIXED: Encode each modality with sMRI architecture fix
         fmri_encoded = self.fmri_encoder(fmri_features)  # (batch, seq_len+1, d_model)
-        smri_encoded = self.smri_encoder(smri_features)  # (batch, seq_len+1, d_model)
+        smri_encoded = self.smri_encoder(smri_features)  # (batch, d_model) - direct output
+
+        # Convert sMRI to sequence format for cross-attention
+        smri_sequence = smri_encoded.unsqueeze(1)  # (batch, 1, d_model)
 
         attention_weights = []
 
@@ -200,18 +231,18 @@ class MinimalImprovedCrossAttentionTransformer(nn.Module):
         for i, cross_layer in enumerate(self.cross_attention_layers):
             if i % 2 == 0:
                 # fMRI attends to sMRI
-                fmri_encoded, attn_fmri_to_smri = cross_layer(fmri_encoded, smri_encoded)
+                fmri_encoded, attn_fmri_to_smri = cross_layer(fmri_encoded, smri_sequence)
                 if return_attention:
                     attention_weights.append(('fmri_to_smri', attn_fmri_to_smri))
             else:
-                # sMRI attends to fMRI
-                smri_encoded, attn_smri_to_fmri = cross_layer(smri_encoded, fmri_encoded)
+                # sMRI attends to fMRI (update sMRI sequence)
+                smri_sequence, attn_smri_to_fmri = cross_layer(smri_sequence, fmri_encoded)
                 if return_attention:
                     attention_weights.append(('smri_to_fmri', attn_smri_to_fmri))
 
-        # Extract [CLS] tokens
-        fmri_cls = fmri_encoded[:, 0]  # (batch, d_model)
-        smri_cls = smri_encoded[:, 0]  # (batch, d_model)
+        # Extract features
+        fmri_cls = fmri_encoded[:, 0]  # Extract CLS token from fMRI (batch, d_model)
+        smri_cls = smri_sequence.squeeze(1)  # Convert back to (batch, d_model)
 
         # IMPROVED: Weighted fusion based on known performance
         weighted_fmri = fmri_cls * self.fusion_weights[0]
