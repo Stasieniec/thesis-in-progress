@@ -55,7 +55,7 @@ class SMRIExperiment:
         num_heads: int = 4,
         dropout: float = 0.3,
         layer_dropout: float = 0.1,
-        feature_selection_k: int = 300,
+        feature_selection_k: int = 800,
         scaler_type: str = 'robust',  # Proven best for FreeSurfer data
         output_dir: str = None,
         seed: int = 42,

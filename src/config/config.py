@@ -93,7 +93,7 @@ class SMRIConfig(BaseConfig):
     """Configuration for sMRI-only experiments."""
     
     # sMRI specific parameters
-    feature_selection_k: int = 300
+    feature_selection_k: int = 800
     scaler_type: str = 'robust'  # 'robust' or 'standard'
     
     # Model architecture (optimized from working notebook + data creation insights)
@@ -113,7 +113,7 @@ class SMRIConfig(BaseConfig):
     
     # sMRI-specific improvements
     use_class_weights: bool = True
-    feature_selection_k: int = 300  # Use more features (like data creation script)
+    feature_selection_k: int = 800  # Use more features (like data creation script)
     scaler_type: str = 'robust'     # RobustScaler like data creation script
     label_smoothing: float = 0.1
     gradient_clip_norm: float = 1.0

@@ -15,7 +15,7 @@ from data.base_dataset import DataAugmentation
 class MultiModalPreprocessor:
     """Preprocess features for both fMRI and sMRI modalities."""
 
-    def __init__(self, smri_feature_selection_k: int = 300):
+    def __init__(self, smri_feature_selection_k: int = 800):
         """
         Initialize multimodal preprocessor.
         
