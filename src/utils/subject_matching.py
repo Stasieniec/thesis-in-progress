@@ -67,11 +67,11 @@ def get_matched_subject_ids(
     
     # Load sMRI subjects
     smri_processor = SMRIDataProcessor(
-        data_path=smri_data_path,
+        data_path=Path(smri_data_path),
         feature_selection_k=None,  # Don't select features, just get subjects
         scaler_type='robust'
     )
-    smri_data = smri_processor.load_all_subjects(phenotypic_file)
+    smri_data = smri_processor.load_all_subjects(Path(phenotypic_file))
     smri_subjects = set(smri_data.keys())
     
     # Find intersection
@@ -198,12 +198,12 @@ def get_matched_datasets(
         print("\n📊 Loading and filtering sMRI data...")
     
     smri_processor = SMRIDataProcessor(
-        data_path=smri_data_path,
+        data_path=Path(smri_data_path),
         feature_selection_k=None,  # Don't do feature selection yet
         scaler_type='robust'
     )
     smri_features, smri_labels, smri_subject_ids = smri_processor.process_all_subjects(
-        phenotypic_file=phenotypic_file, verbose=False
+        phenotypic_file=Path(phenotypic_file), verbose=False
     )
     
     # Filter sMRI to matched subjects
