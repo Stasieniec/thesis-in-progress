@@ -1,12 +1,16 @@
 """Training framework for ABIDE experiments."""
 
-from training.trainer import Trainer
-from training.utils import EarlyStopping, create_data_loaders, create_multimodal_data_loaders, set_seed
+try:
+    from .trainer import Trainer
+    from .utils import EarlyStopping, create_data_loaders, create_multimodal_data_loaders, set_seed
 
-__all__ = [
-    "Trainer",
-    "EarlyStopping", 
-    "create_data_loaders",
-    "create_multimodal_data_loaders",
-    "set_seed"
-] 
+    __all__ = [
+        "Trainer",
+        "EarlyStopping", 
+        "create_data_loaders",
+        "create_multimodal_data_loaders",
+        "set_seed"
+    ]
+except ImportError:
+    # Graceful fallback if modules don't exist
+    __all__ = [] 
