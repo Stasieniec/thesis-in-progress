@@ -50,10 +50,17 @@ def main():
         
         print(f"📊 Loaded {len(matched_data['fmri_subject_ids'])} matched subjects")
         
-        # Quick test with contrastive model (best performer)
-        print("🧠 Testing contrastive model (5 epochs)...")
-        
+        # Quick test with best available model
         experiments = LeaveSiteOutExperiments()
+        
+        # Choose model based on availability
+        available_models = list(experiments.models.keys())
+        if 'contrastive' in available_models:
+            test_model = 'contrastive'
+            print("🧠 Testing contrastive model (5 epochs)...")
+        else:
+            test_model = available_models[0]
+            print(f"🧠 Testing {test_model} model (5 epochs)...")
         
         # Extract site info
         site_labels, site_mapping, _ = experiments.extract_site_info(
@@ -70,7 +77,7 @@ def main():
         
         # Run quick test
         result = experiments.test_strategy(
-            strategy='contrastive',
+            strategy=test_model,
             matched_data=matched_data,
             num_epochs=5,
             batch_size=16,
@@ -82,7 +89,7 @@ def main():
         # Results
         acc = result['cv_results']['test_accuracies']
         print(f"\n📊 LEAVE-SITE-OUT RESULT:")
-        print(f"   Contrastive Model: {acc.mean():.3f} ± {acc.std():.3f}")
+        print(f"   {test_model.title()} Model: {acc.mean():.3f} ± {acc.std():.3f}")
         
         # Compare to baselines
         if acc.mean() > 0.60:

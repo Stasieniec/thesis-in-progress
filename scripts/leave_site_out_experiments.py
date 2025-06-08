@@ -26,6 +26,7 @@ import json
 import time
 import numpy as np
 import pandas as pd
+import torch
 from pathlib import Path
 from typing import Dict, List, Tuple, Set, Optional
 from collections import defaultdict
@@ -42,14 +43,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from utils.subject_matching import get_matched_datasets
 from config import get_config
-from training.cross_validation import _run_multimodal_fold
-from models.cross_attention import (
-    BidirectionalCrossAttentionTransformer,
-    HierarchicalCrossAttentionTransformer, 
-    ContrastiveCrossAttentionTransformer,
-    AdaptiveCrossAttentionTransformer,
-    EnsembleCrossAttentionTransformer
-)
+from utils.helpers import _run_multimodal_fold
+from models.cross_attention import CrossAttentionTransformer
+# Import advanced models from the advanced experiments script
+try:
+    from scripts.advanced_cross_attention_experiments import (
+        BidirectionalCrossAttentionTransformer,
+        HierarchicalCrossAttentionTransformer, 
+        ContrastiveCrossAttentionTransformer,
+        AdaptiveCrossAttentionTransformer,
+        EnsembleCrossAttentionTransformer
+    )
+    ADVANCED_MODELS_AVAILABLE = True
+except ImportError:
+    print("⚠️ Advanced models not available, using basic CrossAttentionTransformer")
+    ADVANCED_MODELS_AVAILABLE = False
 import inspect
 
 
@@ -84,13 +92,19 @@ class LeaveSiteOutExperiments:
 
     def __init__(self):
         """Initialize the leave-site-out experiments."""
-        self.models = {
-            'bidirectional': BidirectionalCrossAttentionTransformer,
-            'hierarchical': HierarchicalCrossAttentionTransformer,
-            'contrastive': ContrastiveCrossAttentionTransformer,
-            'adaptive': AdaptiveCrossAttentionTransformer,
-            'ensemble': EnsembleCrossAttentionTransformer
-        }
+        if ADVANCED_MODELS_AVAILABLE:
+            self.models = {
+                'bidirectional': BidirectionalCrossAttentionTransformer,
+                'hierarchical': HierarchicalCrossAttentionTransformer,
+                'contrastive': ContrastiveCrossAttentionTransformer,
+                'adaptive': AdaptiveCrossAttentionTransformer,
+                'ensemble': EnsembleCrossAttentionTransformer
+            }
+        else:
+            # Fallback to basic model
+            self.models = {
+                'basic_cross_attention': CrossAttentionTransformer
+            }
         
         # Current baselines (from your latest results)
         self.baselines = {
@@ -318,6 +332,102 @@ class LeaveSiteOutExperiments:
             
         return results
 
+    def test_strategy(
+        self,
+        strategy: str,
+        matched_data: Dict,
+        num_epochs: int = 10,
+        batch_size: int = 16,
+        learning_rate: float = 0.001,
+        d_model: int = 128,
+        output_dir: Path = None,
+        seed: int = 42,
+        verbose: bool = True
+    ) -> Dict:
+        """
+        Test a single strategy with leave-site-out CV.
+        
+        Args:
+            strategy: Model strategy name ('contrastive', 'hierarchical', etc.)
+            matched_data: Matched multimodal data
+            num_epochs: Number of training epochs
+            batch_size: Training batch size
+            learning_rate: Learning rate
+            d_model: Model dimension
+            output_dir: Output directory (optional)
+            seed: Random seed
+            verbose: Whether to print progress
+            
+        Returns:
+            Dictionary with results
+        """
+        if strategy not in self.models:
+            raise ValueError(f"Unknown strategy: {strategy}. Available: {list(self.models.keys())}")
+        
+        if verbose:
+            print(f"🧠 Testing {strategy} strategy with leave-site-out CV...")
+        
+        # Extract site information
+        subject_ids = matched_data['fmri_subject_ids']
+        site_labels, site_mapping, site_stats = self.extract_site_info(subject_ids)
+        
+        if verbose:
+            print(f"   Sites found: {len(site_mapping)} ({list(site_mapping.keys())})")
+        
+        # Check if we have enough sites
+        if len(site_mapping) < 3:
+            raise ValueError(f"Need at least 3 sites for leave-site-out CV, found {len(site_mapping)}")
+        
+        # Run the model
+        model_class = self.models[strategy]
+        
+        result = self._run_model_leave_site_out(
+            model_name=strategy,
+            model_class=model_class,
+            matched_data=matched_data,
+            site_labels=site_labels,
+            site_mapping=site_mapping,
+            num_epochs=num_epochs,
+            batch_size=batch_size,
+            learning_rate=learning_rate,
+            d_model=d_model,
+            output_dir=output_dir,
+            seed=seed,
+            verbose=verbose
+        )
+        
+        if result is None:
+            raise RuntimeError(f"Strategy {strategy} failed to produce results")
+        
+        # Format results for consistency
+        formatted_result = {
+            'cv_results': {
+                'test_accuracies': np.array([r['test_accuracy'] for r in result['fold_results']]),
+                'test_balanced_accuracies': np.array([r['test_balanced_accuracy'] for r in result['fold_results']]),
+                'test_aucs': np.array([r['test_auc'] for r in result['fold_results']])
+            },
+            'summary': {
+                'mean_accuracy': result['mean_accuracy'],
+                'std_accuracy': result['std_accuracy'],
+                'mean_balanced_accuracy': result['mean_balanced_accuracy'],
+                'std_balanced_accuracy': result['std_balanced_accuracy'],
+                'mean_auc': result['mean_auc'],
+                'std_auc': result['std_auc'],
+                'beats_baseline': result['beats_baseline']
+            },
+            'site_results': result['site_results'],
+            'n_sites': result['n_sites'],
+            'cv_type': 'leave_site_out'
+        }
+        
+        if verbose:
+            acc = result['mean_accuracy']
+            std = result['std_accuracy']
+            status = "🎉 BEATS fMRI baseline!" if result['beats_baseline'] else "📊 Below baseline"
+            print(f"   Result: {acc:.3f} ± {std:.3f} - {status}")
+        
+        return formatted_result
+
     def _run_model_leave_site_out(
         self,
         model_name: str,
@@ -367,6 +477,14 @@ class LeaveSiteOutExperiments:
             
             try:
                 # Get model-specific parameters
+                # Use local temp directory if not in Colab
+                if output_dir:
+                    fold_output_dir = output_dir / f'fold_{fold_idx}'
+                else:
+                    # Create a temporary local directory for testing
+                    import tempfile
+                    fold_output_dir = Path(tempfile.mkdtemp()) / f'fold_{fold_idx}'
+                
                 fold_config = get_config(
                     'cross_attention',
                     num_folds=1,  # Single fold
@@ -374,7 +492,7 @@ class LeaveSiteOutExperiments:
                     learning_rate=learning_rate,
                     num_epochs=num_epochs,
                     d_model=d_model,
-                    output_dir=output_dir / f'fold_{fold_idx}' if output_dir else None,
+                    output_dir=fold_output_dir,
                     seed=seed + fold_idx  # Different seed per fold
                 )
                 
@@ -407,6 +525,7 @@ class LeaveSiteOutExperiments:
                 
                 # Run single fold training
                 fold_result = _run_multimodal_fold(
+                    fold=fold_idx,
                     train_idx=train_idx,
                     test_idx=test_idx,
                     fmri_features=fmri_features,
@@ -414,8 +533,7 @@ class LeaveSiteOutExperiments:
                     labels=labels,
                     model_class=model_class,
                     config=fold_config,
-                    fold_idx=fold_idx,
-                    model_params=model_params,
+                    device=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
                     verbose=False  # Reduce verbosity for many folds
                 )
                 
