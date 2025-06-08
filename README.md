@@ -11,20 +11,24 @@
 %cd thesis-in-progress
 !pip install -r requirements.txt
 
-# 2. Run all experiments with matched subjects
-from scripts.run_experiments import run_all_experiments
+# 2. Mount Google Drive
+from google.colab import drive
+drive.mount('/content/drive')
 
-results = run_all_experiments(
-    fmri_data_path="/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200",
-    smri_data_path="/content/drive/MyDrive/processed_smri_data_improved", 
-    phenotypic_file="/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv"
-)
+# 3. Run comprehensive thesis evaluation (MAIN RESULTS)
+!python scripts/comprehensive_experiments.py run_all
+
+# 4. Quick test (for validation)
+!python scripts/comprehensive_experiments.py quick_test
 ```
 
-### Verify Results
+### Verify Setup
 ```python
-from verify_matched_subjects import verify_subject_matching
-verify_subject_matching()
+# Check that everything is ready
+!python scripts/comprehensive_experiments.py validate_setup
+
+# List all available experiments
+!python scripts/comprehensive_experiments.py list_experiments
 ```
 
 ## 📊 Key Improvements
@@ -37,13 +41,23 @@ verify_subject_matching()
 
 ## 📈 Expected Results
 
-- **fMRI**: ~65% accuracy
-- **sMRI**: ~58-60% accuracy (improved from 55%)
-- **Cross-Attention**: ~59-62% accuracy
+### Regular Cross-Validation (Optimistic)
+- **fMRI**: ~62-65% accuracy
+- **sMRI**: ~58-62% accuracy (improved from 55%)
+- **Cross-Attention**: ~59-64% accuracy
+
+### Leave-Site-Out CV (Realistic/Clinical)
+- **fMRI**: ~58-62% accuracy
+- **sMRI**: ~55-60% accuracy
+- **Cross-Attention**: ~56-62% accuracy
+
+**Note**: Leave-site-out results are more clinically relevant for thesis reporting.
 
 ## 📚 Documentation
 
-📖 **[Complete Experiment Guide](docs/EXPERIMENT_GUIDE.md)** - Comprehensive setup and usage guide  
+🎓 **[Comprehensive Experiment Guide](COMPREHENSIVE_EXPERIMENT_GUIDE.md)** - **MAIN GUIDE** for thesis results  
+📄 **[Leave-Site-Out Guide](COLAB_LEAVE_SITE_OUT.md)** - Site-based cross-validation  
+📖 **[Complete Experiment Guide](docs/EXPERIMENT_GUIDE.md)** - Individual experiment setup  
 📄 **[Colab Guide](COLAB_GUIDE.md)** - Google Colab specific instructions  
 
 ## 🏗️ Repository Structure
