@@ -45,7 +45,7 @@ from utils import run_cross_validation, get_device
 from utils.subject_matching import get_matched_datasets
 from evaluation import create_cv_visualizations, save_results
 from training import set_seed, Trainer
-from models import FMRITransformer, SMRITransformer, CrossAttentionTransformer
+from models import SingleAtlasTransformer, SMRITransformer, CrossAttentionTransformer
 
 # Configure logging
 logging.basicConfig(
@@ -415,7 +415,14 @@ class ThesisExperiments:
     """Comprehensive experiment framework for thesis."""
     
     def __init__(self):
-        self.config = get_config()
+        # Use cross_attention config as default (most comprehensive)  
+        # Override paths for local testing (not in Colab)
+        if not Path('/content/drive').exists():
+            # Local testing - use current directory
+            self.config = get_config('cross_attention', output_dir=Path('./local_test_results'))
+        else:
+            # Google Colab environment
+            self.config = get_config('cross_attention')
         self.device = get_device()
         
         # Define all experiments
@@ -424,7 +431,7 @@ class ThesisExperiments:
             'fmri_baseline': {
                 'name': 'fMRI Baseline',
                 'description': 'fMRI-only Transformer baseline',
-                'model_class': FMRITransformer,
+                'model_class': SingleAtlasTransformer,
                 'type': 'baseline',
                 'modality': 'fmri'
             },
@@ -604,11 +611,29 @@ class ThesisExperiments:
         if verbose:
             logger.info("📊 Loading matched subject data...")
         
-        # Load matched datasets
-        matched_data = get_matched_datasets(
-            data_dir=self.config['data_dir'],
-            verbose=verbose
-        )
+        # Check if we're in a local testing environment
+        if not Path('/content/drive').exists():
+            # Local testing - create mock data
+            if verbose:
+                logger.info("🔬 Local testing mode - creating mock data")
+            
+            n_subjects = 100
+            fmri_data = np.random.randn(n_subjects, 19900).astype(np.float32)
+            smri_data = np.random.randn(n_subjects, 800).astype(np.float32)
+            labels = np.random.randint(0, 2, n_subjects)
+            
+            matched_data = {
+                'fmri_data': fmri_data,
+                'smri_data': smri_data,
+                'labels': labels,
+                'n_subjects': n_subjects
+            }
+        else:
+            # Google Colab environment - load real data
+            matched_data = get_matched_datasets(
+                data_dir=self.config.fmri_roi_dir.parent.parent,
+                verbose=verbose
+            )
         
         if verbose:
             logger.info(f"✅ Loaded {matched_data['n_subjects']} matched subjects")
@@ -660,18 +685,39 @@ class ThesisExperiments:
                 exp_dir, seed, verbose
             )
         else:
-            # Use single-modality cross-validation  
-            cv_results = run_cross_validation(
-                exp_config['model_class'], X, y,
-                num_folds=num_folds,
-                num_epochs=num_epochs,
-                batch_size=batch_size,
-                learning_rate=learning_rate,
-                device=self.device,
-                save_dir=exp_dir,
-                seed=seed,
+            # Use single-modality cross-validation
+            # Create a temporary config for this experiment
+            temp_config = get_config('cross_attention')
+            temp_config.num_folds = num_folds
+            temp_config.num_epochs = num_epochs
+            temp_config.batch_size = batch_size
+            temp_config.learning_rate = learning_rate
+            temp_config.output_dir = exp_dir
+            temp_config.seed = seed
+            
+            fold_results = run_cross_validation(
+                features=X,
+                labels=y,
+                model_class=exp_config['model_class'],
+                config=temp_config,
+                experiment_type='single',
                 verbose=verbose
             )
+            
+            # Convert to expected format
+            accuracies = [r['test_accuracy'] for r in fold_results]
+            balanced_accs = [r['test_balanced_accuracy'] for r in fold_results]
+            aucs = [r['test_auc'] for r in fold_results]
+            
+            cv_results = {
+                'fold_results': fold_results,
+                'mean_accuracy': np.mean(accuracies) * 100,
+                'std_accuracy': np.std(accuracies) * 100,
+                'mean_balanced_accuracy': np.mean(balanced_accs) * 100,
+                'std_balanced_accuracy': np.std(balanced_accs) * 100,
+                'mean_auc': np.mean(aucs),
+                'std_auc': np.std(aucs)
+            }
         
         # Prepare result
         result = {
@@ -732,40 +778,48 @@ class ThesisExperiments:
             ).to(self.device)
             
             # Train model
-            trainer = Trainer(model, device=self.device)
+            trainer = Trainer(model, self.device, self.config, model_type='multimodal')
             
-            # Train with multimodal data
-            history = trainer.train_multimodal(
+            # Create data loaders for training
+            from training.utils import create_multimodal_data_loaders
+            train_loader, val_loader = create_multimodal_data_loaders(
                 fmri_train, smri_train, y_train,
                 fmri_val, smri_val, y_val,
-                num_epochs=num_epochs,
                 batch_size=batch_size,
-                learning_rate=learning_rate,
-                save_dir=save_dir / f'fold_{fold}',
-                verbose=verbose
+                augment_train=True
             )
             
-            # Evaluate
-            model.load_state_dict(torch.load(save_dir / f'fold_{fold}' / 'best_model.pth')['model_state_dict'])
-            model.eval()
+            # Train with multimodal data
+            checkpoint_path = save_dir / f'fold_{fold}' / 'best_model.pth'
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            history = trainer.fit(
+                train_loader, val_loader,
+                num_epochs=num_epochs,
+                checkpoint_path=checkpoint_path,
+                y_train=y_train
+            )
             
-            with torch.no_grad():
-                fmri_val_tensor = torch.FloatTensor(fmri_val).to(self.device)
-                smri_val_tensor = torch.FloatTensor(smri_val).to(self.device)
-                logits = model(fmri_val_tensor, smri_val_tensor)
-                y_pred = torch.softmax(logits, dim=1)[:, 1].cpu().numpy()
-                y_pred_class = (y_pred > 0.5).astype(int)
+            # Evaluate on validation set
+            val_test_loader, _ = create_multimodal_data_loaders(
+                fmri_val, smri_val, y_val,
+                fmri_val, smri_val, y_val,
+                batch_size=batch_size,
+                augment_train=False
+            )
             
-            # Calculate metrics
-            accuracy = accuracy_score(y_val, y_pred_class)
-            balanced_acc = balanced_accuracy_score(y_val, y_pred_class)
-            auc = roc_auc_score(y_val, y_pred)
+            # Load best model and evaluate
+            model.load_state_dict(torch.load(checkpoint_path)['model_state_dict'])
+            test_metrics = trainer.evaluate_final(val_test_loader)
+            
+            accuracy = test_metrics['accuracy']
+            balanced_acc = test_metrics['balanced_accuracy']
+            auc = test_metrics['auc']
             
             fold_results.append({
                 'fold': fold,
-                'accuracy': accuracy,
-                'balanced_accuracy': balanced_acc,
-                'auc': auc,
+                'test_accuracy': accuracy,
+                'test_balanced_accuracy': balanced_acc,
+                'test_auc': auc,
                 'history': history
             })
             
@@ -773,9 +827,9 @@ class ThesisExperiments:
                 logger.info(f"   Accuracy: {accuracy:.3f}, AUC: {auc:.3f}")
         
         # Aggregate results
-        accuracies = [r['accuracy'] for r in fold_results]
-        balanced_accs = [r['balanced_accuracy'] for r in fold_results]
-        aucs = [r['auc'] for r in fold_results]
+        accuracies = [r['test_accuracy'] for r in fold_results]
+        balanced_accs = [r['test_balanced_accuracy'] for r in fold_results]
+        aucs = [r['test_auc'] for r in fold_results]
         
         return {
             'fold_results': fold_results,
