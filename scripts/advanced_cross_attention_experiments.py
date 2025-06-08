@@ -951,14 +951,14 @@ class AdvancedCrossAttentionExperiments:
             aucs = [r['test_auc'] for r in cv_results]
             
             comparison[strategy_name] = {
-                'mean_accuracy': np.mean(accuracies),
-                'std_accuracy': np.std(accuracies),
-                'mean_auc': np.mean(aucs),
-                'std_auc': np.std(aucs),
-                'best_accuracy': np.max(accuracies),
-                'worst_accuracy': np.min(accuracies),
-                'beat_fmri_baseline': np.mean(accuracies) > self.baseline_results['fmri'],
-                'improvement_over_original': np.mean(accuracies) - self.baseline_results['original_cross_attention']
+                'mean_accuracy': float(np.mean(accuracies)),
+                'std_accuracy': float(np.std(accuracies)),
+                'mean_auc': float(np.mean(aucs)),
+                'std_auc': float(np.std(aucs)),
+                'best_accuracy': float(np.max(accuracies)),
+                'worst_accuracy': float(np.min(accuracies)),
+                'beat_fmri_baseline': bool(np.mean(accuracies) > self.baseline_results['fmri']),
+                'improvement_over_original': float(np.mean(accuracies) - self.baseline_results['original_cross_attention'])
             }
         
         # Sort by performance
