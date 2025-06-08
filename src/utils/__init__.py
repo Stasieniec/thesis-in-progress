@@ -2,11 +2,13 @@
 
 from utils.helpers import get_device, run_cross_validation
 from utils.subject_matching import get_matched_subject_ids, filter_data_by_subjects, get_matched_datasets
+from training.utils import set_seed
 
 __all__ = [
     "get_device",
     "run_cross_validation",
     "get_matched_subject_ids",
     "filter_data_by_subjects", 
-    "get_matched_datasets"
+    "get_matched_datasets",
+    "set_seed"
 ] 

@@ -37,7 +37,7 @@ import json
 from datetime import datetime
 
 from config import get_config
-from utils import run_cross_validation, set_seed, get_device
+from utils import run_cross_validation, get_device, set_seed
 from utils.subject_matching import get_matched_datasets
 from evaluation import create_cv_visualizations, save_results
 
