@@ -1,0 +1,61 @@
+{
+  "experiment_name": "ABIDE_Cross_Attention",
+  "description": "Default configuration for ABIDE cross-attention experiments",
+  
+  "fmri": {
+    "num_epochs": 50,
+    "batch_size": 32,
+    "learning_rate": 0.001,
+    "patience": 10,
+    "random_seed": 42,
+    "model_config": {
+      "d_model": 128,
+      "nhead": 8,
+      "num_layers": 4,
+      "dropout": 0.1
+    }
+  },
+  
+  "smri": {
+    "num_epochs": 100,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "patience": 15,
+    "feature_selection_k": 800,
+    "random_seed": 42,
+    "model_config": {
+      "hidden_dims": [512, 256, 128],
+      "dropout": 0.3,
+      "use_batch_norm": true
+    }
+  },
+  
+  "cross_attention": {
+    "num_epochs": 75,
+    "batch_size": 32,
+    "learning_rate": 0.0005,
+    "patience": 12,
+    "random_seed": 42,
+    "model_config": {
+      "d_model": 128,
+      "nhead": 8,
+      "num_layers": 4,
+      "dropout": 0.1
+    }
+  },
+  
+  "data": {
+    "use_matched_subjects": true,
+    "train_split": 0.7,
+    "val_split": 0.15,
+    "test_split": 0.15,
+    "stratify": true
+  },
+  
+  "logging": {
+    "log_level": "INFO",
+    "save_checkpoints": true,
+    "save_results": true,
+    "plot_training_curves": true
+  }
+} 

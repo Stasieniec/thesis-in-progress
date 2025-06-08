@@ -384,4 +384,49 @@ def plot_roc_curve(
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
     else:
-        plt.show() 
+        plt.show()
+
+
+def calculate_metrics(y_true, y_pred, y_prob=None):
+    """
+    Calculate comprehensive metrics for binary classification.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted labels  
+        y_prob: Predicted probabilities (optional)
+        
+    Returns:
+        Dictionary of metrics
+    """
+    # Basic metrics
+    accuracy = accuracy_score(y_true, y_pred)
+    precision, recall, f1, _ = precision_recall_fscore_support(y_true, y_pred, average='binary')
+    
+    # AUC if probabilities provided
+    auc = None
+    if y_prob is not None:
+        try:
+            auc = roc_auc_score(y_true, y_prob)
+        except:
+            auc = None
+    
+    # Confusion matrix
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    
+    # Specificity and sensitivity  
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+    
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1,
+        'auc': auc,
+        'specificity': specificity,
+        'sensitivity': sensitivity,
+        'confusion_matrix': {
+            'tn': tn, 'fp': fp, 'fn': fn, 'tp': tp
+        }
+    } 
