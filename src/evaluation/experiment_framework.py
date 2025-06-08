@@ -779,11 +779,24 @@ class ComprehensiveExperimentFramework:
             return
         
         try:
-            from src.evaluation.result_analyzer import ThesisPlotter
+            # Try different import paths
+            try:
+                from evaluation.result_analyzer import ThesisPlotter, ResultAnalyzer
+            except ImportError:
+                from src.evaluation.result_analyzer import ThesisPlotter, ResultAnalyzer
+            
             plotter = ThesisPlotter(self.results, self.output_dir)
             plotter.create_all_plots()
             self._log("📈 Thesis plots generated successfully")
-        except ImportError:
-            self._log("⚠️ ThesisPlotter not available, skipping plots")
+            
+            # Also generate statistical report
+            analyzer = ResultAnalyzer(self.results)
+            analyzer.generate_statistical_report(
+                self.output_dir / 'statistical_report.txt'
+            )
+            self._log("📄 Statistical report generated")
+            
+        except ImportError as e:
+            self._log(f"⚠️ ThesisPlotter not available: {e}, skipping plots")
         except Exception as e:
             self._log(f"❌ Failed to generate plots: {e}", level="ERROR") 

@@ -1,0 +1,7 @@
+[2025-06-08 21:56:20] INFO: 🚀 Comprehensive Experiment Framework Initialized
+[2025-06-08 21:56:20] INFO: 📁 Output directory: test_plotting_results
+[2025-06-08 21:56:20] INFO: 🎲 Random seed: 42
+[2025-06-08 21:56:20] INFO: 📊 Loading matched multimodal data...
+[2025-06-08 21:56:20] INFO: ⚠️ Failed to load improved sMRI data: [Errno 2] No such file or directory: '/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv'
+[2025-06-08 21:56:20] INFO:    Trying original sMRI data...
+[2025-06-08 21:56:20] ERROR: ❌ Failed to load data: [Errno 2] No such file or directory: '/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv'

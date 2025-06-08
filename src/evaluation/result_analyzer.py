@@ -16,8 +16,19 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Set publication-quality plotting style
-plt.style.use('seaborn-v0_8-whitegrid')
-sns.set_palette("husl")
+try:
+    plt.style.use('seaborn-v0_8-whitegrid')
+except OSError:
+    try:
+        plt.style.use('seaborn-whitegrid')
+    except OSError:
+        plt.style.use('default')
+        print("⚠️ Seaborn style not available, using default matplotlib style")
+
+try:
+    sns.set_palette("husl")
+except:
+    print("⚠️ Could not set seaborn palette")
 
 
 class ThesisPlotter:

@@ -37,7 +37,17 @@ from typing import List, Optional, Dict
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from evaluation.experiment_framework import ComprehensiveExperimentFramework, ExperimentRegistry
-from evaluation.result_analyzer import ThesisPlotter, ResultAnalyzer
+
+# Try different import paths for result analyzer
+try:
+    from evaluation.result_analyzer import ThesisPlotter, ResultAnalyzer
+except ImportError:
+    try:
+        from src.evaluation.result_analyzer import ThesisPlotter, ResultAnalyzer
+    except ImportError:
+        print("⚠️ ThesisPlotter not available - plots will be skipped")
+        ThesisPlotter = None
+        ResultAnalyzer = None
 
 
 class ComprehensiveExperiments:
@@ -119,11 +129,12 @@ class ComprehensiveExperiments:
         try:
             framework.generate_thesis_plots()
             
-            # Generate statistical report
-            analyzer = ResultAnalyzer(results)
-            analyzer.generate_statistical_report(
-                framework.output_dir / 'statistical_report.txt'
-            )
+            # Generate statistical report (if available)
+            if ResultAnalyzer is not None:
+                analyzer = ResultAnalyzer(results)
+                analyzer.generate_statistical_report(
+                    framework.output_dir / 'statistical_report.txt'
+                )
             
             print(f"✅ Analysis complete!")
             
@@ -195,7 +206,10 @@ class ComprehensiveExperiments:
         )
         
         # Generate plots
-        framework.generate_thesis_plots()
+        try:
+            framework.generate_thesis_plots()
+        except Exception as e:
+            print(f"⚠️ Plot generation failed: {e}")
         
         print(f"✅ Selected experiments complete!")
         print(f"📁 Results: {framework.output_dir}")
@@ -255,8 +269,8 @@ class ComprehensiveExperiments:
         # Generate basic plots
         try:
             framework.generate_thesis_plots()
-        except:
-            print("⚠️ Plot generation skipped in quick test")
+        except Exception as e:
+            print(f"⚠️ Plot generation skipped in quick test: {e}")
         
         print(f"⚡ Quick test complete!")
         print(f"📁 Results: {framework.output_dir}")
@@ -297,12 +311,18 @@ class ComprehensiveExperiments:
             output_dir = Path(output_dir)
         
         # Generate plots
-        plotter = ThesisPlotter(results, output_dir)
-        plotter.create_all_plots()
+        if ThesisPlotter is not None:
+            plotter = ThesisPlotter(results, output_dir)
+            plotter.create_all_plots()
+        else:
+            print("⚠️ ThesisPlotter not available")
         
         # Generate statistical report
-        analyzer = ResultAnalyzer(results)
-        analyzer.generate_statistical_report(output_dir / 'statistical_report.txt')
+        if ResultAnalyzer is not None:
+            analyzer = ResultAnalyzer(results)
+            analyzer.generate_statistical_report(output_dir / 'statistical_report.txt')
+        else:
+            print("⚠️ ResultAnalyzer not available")
         
         print(f"✅ Plots generated!")
         print(f"📁 Output: {output_dir}/plots/")
