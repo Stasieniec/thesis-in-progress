@@ -696,8 +696,14 @@ class ThesisExperiments:
             )
         else:
             # Use single-modality cross-validation
-            # Create a temporary config for this experiment
-            temp_config = get_config('cross_attention')
+            # Create appropriate config for this experiment
+            if exp_config['modality'] == 'fmri':
+                temp_config = get_config('fmri')
+            elif exp_config['modality'] == 'smri':
+                temp_config = get_config('smri')
+            else:
+                temp_config = get_config('cross_attention')
+                
             temp_config.num_folds = num_folds
             temp_config.num_epochs = num_epochs
             temp_config.batch_size = batch_size
