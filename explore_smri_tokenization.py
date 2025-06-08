@@ -31,12 +31,20 @@ import re
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-from config import get_config
-from data import SMRIDataProcessor
-from models import SMRITransformer
-from evaluation import run_cross_validation
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+
+# Try to import project modules, but make script work without them
+try:
+    from config import get_config
+    from data import SMRIDataProcessor
+    from models import SMRITransformer
+    from evaluation import create_cv_visualizations, save_results
+    PROJECT_MODULES_AVAILABLE = True
+except ImportError:
+    PROJECT_MODULES_AVAILABLE = False
+    print("⚠️ Project modules not available - using standalone mode")
 
 
 class SMRITokenizationExplorer:
@@ -52,11 +60,20 @@ class SMRITokenizationExplorer:
             if os.path.exists(improved_path):
                 self.data_path = improved_path
                 print(f"✅ Using improved sMRI data (800 features)")
-            else:
+            elif os.path.exists(original_path):
                 self.data_path = original_path
                 print(f"📊 Using original sMRI data")
+            else:
+                raise FileNotFoundError(
+                    f"No sMRI data found at:\n"
+                    f"  - {improved_path}\n"
+                    f"  - {original_path}\n"
+                    f"Please check that Google Drive is mounted and data is uploaded."
+                )
         else:
             self.data_path = data_path
+            if not os.path.exists(data_path):
+                raise FileNotFoundError(f"Data path not found: {data_path}")
             
         self.features = None
         self.labels = None
@@ -346,8 +363,6 @@ class SMRITokenizationExplorer:
     
     def _tokenize_by_clustering(self, n_clusters: int = 20) -> Dict[str, List[int]]:
         """Use data-driven clustering to create tokens."""
-        from sklearn.cluster import KMeans
-        from sklearn.preprocessing import StandardScaler
         
         # Transpose features to cluster features (not subjects)
         feature_data = self.features.T  # Shape: (n_features, n_subjects)
@@ -420,8 +435,6 @@ class SMRITokenizationExplorer:
     
     def _run_baseline_experiment(self, num_folds: int, num_epochs: int) -> float:
         """Run standard transformer without tokenization."""
-        from sklearn.model_selection import StratifiedKFold
-        from sklearn.preprocessing import StandardScaler
         
         accuracies = []
         skf = StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=42)
@@ -458,8 +471,6 @@ class SMRITokenizationExplorer:
     def _run_tokenized_experiment(self, token_mapping: Dict[str, List[int]], 
                                  strategy_name: str, num_folds: int, num_epochs: int) -> float:
         """Run transformer with tokenized features."""
-        from sklearn.model_selection import StratifiedKFold
-        from sklearn.preprocessing import StandardScaler
         
         accuracies = []
         skf = StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=42)
