@@ -631,16 +631,26 @@ class ThesisExperiments:
         else:
             # Google Colab environment - load real data
             matched_data = get_matched_datasets(
-                data_dir=self.config.fmri_roi_dir.parent.parent,
+                fmri_roi_dir=str(self.config.fmri_roi_dir),
+                smri_data_path=str(self.config.smri_data_path),
+                phenotypic_file=str(self.config.phenotypic_file),
                 verbose=verbose
             )
         
         if verbose:
-            logger.info(f"✅ Loaded {matched_data['n_subjects']} matched subjects")
-            logger.info(f"🧠 fMRI shape: {matched_data['fmri_data'].shape}")
-            logger.info(f"🏗️ sMRI shape: {matched_data['smri_data'].shape}")
+            logger.info(f"✅ Loaded {matched_data['num_matched_subjects']} matched subjects")
+            logger.info(f"🧠 fMRI shape: {matched_data['fmri_features'].shape}")
+            logger.info(f"🏗️ sMRI shape: {matched_data['smri_features'].shape}")
         
-        return matched_data
+        # Standardize field names for consistency
+        standardized_data = {
+            'fmri_data': matched_data['fmri_features'],
+            'smri_data': matched_data['smri_features'],
+            'labels': matched_data['fmri_labels'],  # fmri_labels and smri_labels are the same
+            'n_subjects': matched_data['num_matched_subjects']
+        }
+        
+        return standardized_data
     
     def _run_experiment(
         self,
