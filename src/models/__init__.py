@@ -7,6 +7,7 @@ try:
     from .cross_attention import CrossAttentionTransformer as OriginalCrossAttentionTransformer
     from .improved_cross_attention import ImprovedCrossAttentionTransformer
     from .minimal_improved_cross_attention import MinimalImprovedCrossAttentionTransformer
+    from .enhanced_smri import EnhancedSMRITransformer, SMRIEnsemble
 
     # Use minimal improved version as default
     CrossAttentionTransformer = MinimalImprovedCrossAttentionTransformer
@@ -15,6 +16,8 @@ try:
         "SingleAtlasTransformer",
         "SMRITransformer", 
         "WorkingNotebookSMRITransformer",
+        "EnhancedSMRITransformer",
+        "SMRIEnsemble",
         "CrossAttentionTransformer",
         "OriginalCrossAttentionTransformer",
         "ImprovedCrossAttentionTransformer",
