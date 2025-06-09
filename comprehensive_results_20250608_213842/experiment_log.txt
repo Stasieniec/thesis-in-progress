@@ -1,4 +1,0 @@
-[2025-06-08 21:38:42] INFO: 🚀 Comprehensive Experiment Framework Initialized
-[2025-06-08 21:38:42] INFO: 📁 Output directory: comprehensive_results_20250608_213842
-[2025-06-08 21:38:42] INFO: 🎲 Random seed: 42
-[2025-06-08 21:38:42] ERROR: ❌ Failed to load data: [Errno 2] No such file or directory: '/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv'

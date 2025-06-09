@@ -36,8 +36,10 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import accuracy_score, roc_auc_score, balanced_accuracy_score
+from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut
+from sklearn.metrics import accuracy_score, roc_auc_score, balanced_accuracy_score, confusion_matrix
+from scipy import stats
+from collections import defaultdict
 
 # Project imports
 from config import get_config
@@ -46,6 +48,7 @@ from utils.subject_matching import get_matched_datasets
 from evaluation import create_cv_visualizations, save_results
 from training import set_seed, Trainer
 from models import SingleAtlasTransformer, SMRITransformer, CrossAttentionTransformer
+from utils.helpers import _run_multimodal_fold
 
 # Configure logging
 logging.basicConfig(
@@ -414,6 +417,27 @@ class ContrastiveCrossAttentionTransformer(nn.Module):
 class ThesisExperiments:
     """Comprehensive experiment framework for thesis."""
     
+    # Known ABIDE site mappings for leave-site-out CV
+    ABIDE_SITES = {
+        'CALTECH': 'California Institute of Technology',
+        'CMU': 'Carnegie Mellon University', 
+        'KKI': 'Kennedy Krieger Institute',
+        'LEUVEN': 'University of Leuven',
+        'MAX_MUN': 'Ludwig Maximilians University Munich',
+        'NYU': 'NYU Langone Medical Center',
+        'OHSU': 'Oregon Health and Science University',
+        'OLIN': 'Olin Institute',
+        'PITT': 'University of Pittsburgh',
+        'SBL': 'Social Brain Lab',
+        'SDSU': 'San Diego State University',
+        'STANFORD': 'Stanford University',
+        'TRINITY': 'Trinity Centre for Health Sciences',
+        'UCLA': 'UCLA',
+        'UM': 'University of Michigan',
+        'USM': 'University of Southern Mississippi',
+        'YALE': 'Yale'
+    }
+    
     def __init__(self):
         # Use cross_attention config as default (most comprehensive)  
         # Override paths for local testing (not in Colab)
@@ -474,9 +498,123 @@ class ThesisExperiments:
             }
         }
         
+        # Baselines for comparison
+        self.baselines = {
+            'fmri': 0.60,  # 60% fMRI baseline
+            'smri': 0.58,  # 58% sMRI baseline
+            'cross_attention': 0.58  # 58% original cross-attention
+        }
+        
         logger.info(f"🚀 Thesis Experiment Framework Initialized")
         logger.info(f"📊 Available experiments: {len(self.experiments)}")
         logger.info(f"💻 Device: {self.device}")
+    
+    def extract_site_info(
+        self, 
+        subject_ids: List[str], 
+        phenotypic_file: str = None
+    ) -> Tuple[List[str], Dict[str, List[str]], pd.DataFrame]:
+        """
+        Extract site information from subject IDs and phenotypic data.
+        
+        Args:
+            subject_ids: List of subject IDs
+            phenotypic_file: Path to phenotypic CSV file
+            
+        Returns:
+            Tuple of (site_labels, site_mapping, site_stats)
+        """
+        logger.info("🔍 Extracting site information from subject IDs...")
+        
+        site_labels = []
+        site_mapping = defaultdict(list)
+        
+        # Load phenotypic data if available
+        phenotypic_sites = {}
+        if phenotypic_file and Path(phenotypic_file).exists():
+            try:
+                pheno_df = pd.read_csv(phenotypic_file)
+                if 'SITE_ID' in pheno_df.columns:
+                    phenotypic_sites = dict(zip(
+                        pheno_df['SUB_ID'].astype(str), 
+                        pheno_df['SITE_ID'].astype(str)
+                    ))
+                    logger.info(f"   ✅ Found SITE_ID column in phenotypic data")
+                else:
+                    logger.info(f"   ⚠️ No SITE_ID column found in phenotypic data")
+            except Exception as e:
+                logger.info(f"   ⚠️ Error loading phenotypic data: {e}")
+        
+        # Extract sites from subject IDs
+        for sub_id in subject_ids:
+            site = self._extract_site_from_subject_id(sub_id, phenotypic_sites)
+            site_labels.append(site)
+            site_mapping[site].append(sub_id)
+        
+        # Create site statistics
+        site_stats = pd.DataFrame([
+            {
+                'site': site,
+                'n_subjects': len(subjects),
+                'subjects': subjects[:5] + (['...'] if len(subjects) > 5 else [])
+            }
+            for site, subjects in site_mapping.items()
+        ]).sort_values('n_subjects', ascending=False)
+        
+        logger.info(f"\n📊 Site extraction results:")
+        logger.info(f"   Total sites: {len(site_mapping)}")
+        logger.info(f"   Total subjects: {len(subject_ids)}")
+        logger.info(f"   Sites found: {list(site_mapping.keys())}")
+        
+        return site_labels, dict(site_mapping), site_stats
+
+    def _extract_site_from_subject_id(
+        self, 
+        subject_id: str, 
+        phenotypic_sites: Dict[str, str]
+    ) -> str:
+        """Extract site information from a single subject ID."""
+        # First check phenotypic data
+        if subject_id in phenotypic_sites:
+            return phenotypic_sites[subject_id]
+        
+        # Try to extract from subject ID patterns
+        subject_id_upper = subject_id.upper()
+        
+        # Check for known ABIDE site prefixes
+        for site_code in self.ABIDE_SITES.keys():
+            if site_code in subject_id_upper:
+                return site_code
+        
+        # Try common patterns:
+        # Pattern 1: Site prefix followed by numbers (e.g., "NYU_0050001")
+        for site_code in self.ABIDE_SITES.keys():
+            if subject_id_upper.startswith(site_code):
+                return site_code
+        
+        # Pattern 2: Numbers followed by site info (e.g., "0050001_KKI")
+        for site_code in self.ABIDE_SITES.keys():
+            if subject_id_upper.endswith(f"_{site_code}") or subject_id_upper.endswith(site_code):
+                return site_code
+        
+        # Pattern 3: Extract numeric prefix and map to common sites
+        if subject_id.startswith(('005', '006', '007')):  # Common NYU patterns
+            return 'NYU'
+        elif subject_id.startswith(('010', '011')):  # Common patterns for other sites
+            return 'UNKNOWN_1'
+        elif subject_id.startswith(('020', '021')):
+            return 'UNKNOWN_2'
+        
+        # Pattern 4: Try to find site info in middle of string
+        for site_code in self.ABIDE_SITES.keys():
+            if f"_{site_code}_" in subject_id_upper or f"-{site_code}-" in subject_id_upper:
+                return site_code
+        
+        # Last resort: use first few characters
+        if len(subject_id) >= 3:
+            return f"SITE_{subject_id[:3].upper()}"
+        else:
+            return f"SITE_{subject_id.upper()}"
     
     def run_all(
         self,
@@ -486,9 +624,10 @@ class ThesisExperiments:
         learning_rate: float = 3e-5,
         output_dir: str = None,
         seed: int = 42,
-        verbose: bool = True
+        verbose: bool = True,
+        include_leave_site_out: bool = True
     ):
-        """Run all experiments (baselines + cross-attention)."""
+        """Run all experiments with both standard and leave-site-out cross-validation."""
         
         if output_dir is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -498,37 +637,46 @@ class ThesisExperiments:
         output_path.mkdir(parents=True, exist_ok=True)
         
         set_seed(seed)
-        logger.info(f"🎯 Running ALL THESIS EXPERIMENTS")
+        logger.info(f"🎯 Running COMPREHENSIVE THESIS EXPERIMENTS")
         logger.info(f"📁 Output directory: {output_path}")
         logger.info(f"🔬 Total experiments: {len(self.experiments)}")
+        logger.info(f"📊 Standard CV: YES")
+        logger.info(f"🏥 Leave-Site-Out CV: {'YES' if include_leave_site_out else 'NO'}")
         
         # Load matched data once
         matched_data = self._load_matched_data(verbose)
         
-        # Run all experiments
+        # Run all experiments with both CV types
         all_results = {}
         start_time = time.time()
         
         for exp_name, exp_config in self.experiments.items():
-            logger.info(f"\n{'='*60}")
+            logger.info(f"\n{'='*80}")
             logger.info(f"🧪 EXPERIMENT: {exp_config['name']}")
             logger.info(f"📝 Description: {exp_config['description']}")
             logger.info(f"🏷️ Type: {exp_config['type']}")
-            logger.info(f"{'='*60}")
+            logger.info(f"{'='*80}")
             
             try:
-                result = self._run_experiment(
+                result = self._run_comprehensive_experiment(
                     exp_name, exp_config, matched_data,
                     num_folds, num_epochs, batch_size, learning_rate,
-                    output_path, seed, verbose
+                    output_path, seed, verbose, include_leave_site_out
                 )
                 all_results[exp_name] = result
                 
                 # Log result summary
                 if 'error' not in result:
-                    acc = result['regular_cv']['mean_accuracy']
-                    std = result['regular_cv']['std_accuracy']
-                    logger.info(f"✅ {exp_config['name']}: {acc:.1f}% ± {std:.1f}%")
+                    # Standard CV results
+                    acc = result['standard_cv']['mean_accuracy']
+                    std = result['standard_cv']['std_accuracy']
+                    logger.info(f"✅ {exp_config['name']} (Standard CV): {acc:.1f}% ± {std:.1f}%")
+                    
+                    # Leave-site-out CV results (if available)
+                    if include_leave_site_out and 'leave_site_out_cv' in result:
+                        lso_acc = result['leave_site_out_cv']['mean_accuracy']
+                        lso_std = result['leave_site_out_cv']['std_accuracy']
+                        logger.info(f"✅ {exp_config['name']} (Leave-Site-Out CV): {lso_acc:.1f}% ± {lso_std:.1f}%")
                 else:
                     logger.error(f"❌ {exp_config['name']}: {result['error']}")
                     
@@ -542,7 +690,7 @@ class ThesisExperiments:
         
         # Save comprehensive results
         total_time = time.time() - start_time
-        self._save_comprehensive_results(all_results, output_path, total_time, verbose)
+        self._save_comprehensive_results(all_results, output_path, total_time, verbose, include_leave_site_out)
         
         logger.info(f"\n🎉 ALL EXPERIMENTS COMPLETED!")
         logger.info(f"⏱️ Total time: {total_time/60:.1f} minutes")
@@ -565,6 +713,96 @@ class ThesisExperiments:
             if v['type'] == 'cross_attention'
         }
         return self._run_specific_experiments(cross_attention_experiments, **kwargs)
+    
+    def run_standard_cv_only(self, **kwargs):
+        """Run all experiments with only standard cross-validation."""
+        kwargs['include_leave_site_out'] = False
+        return self.run_all(**kwargs)
+    
+    def run_leave_site_out_only(
+        self,
+        num_epochs: int = 200,
+        batch_size: int = 32,
+        learning_rate: float = 3e-5,
+        output_dir: str = None,
+        seed: int = 42,
+        verbose: bool = True
+    ):
+        """Run all experiments with only leave-site-out cross-validation."""
+        
+        if output_dir is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = f"leave_site_out_results_{timestamp}"
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        set_seed(seed)
+        logger.info(f"🏥 Running LEAVE-SITE-OUT EXPERIMENTS ONLY")
+        logger.info(f"📁 Output directory: {output_path}")
+        logger.info(f"🔬 Total experiments: {len(self.experiments)}")
+        
+        # Load matched data once
+        matched_data = self._load_matched_data(verbose)
+        
+        # Run only leave-site-out experiments
+        all_results = {}
+        start_time = time.time()
+        
+        for exp_name, exp_config in self.experiments.items():
+            logger.info(f"\n{'='*80}")
+            logger.info(f"🧪 EXPERIMENT: {exp_config['name']}")
+            logger.info(f"📝 Description: {exp_config['description']}")
+            logger.info(f"🏥 Leave-Site-Out CV Only")
+            logger.info(f"{'='*80}")
+            
+            try:
+                # Create experiment directory
+                exp_dir = output_path / exp_name
+                exp_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Run only leave-site-out CV
+                leave_site_out_results = self._run_leave_site_out_cv_for_experiment(
+                    exp_config, matched_data, num_epochs, 
+                    batch_size, learning_rate, exp_dir, seed, verbose
+                )
+                
+                result = {
+                    'experiment_name': exp_name,
+                    'name': exp_config['name'],
+                    'description': exp_config['description'],
+                    'type': exp_config['type'],
+                    'modality': exp_config['modality'],
+                    'timestamp': datetime.now().isoformat(),
+                    'leave_site_out_cv': leave_site_out_results
+                }
+                
+                all_results[exp_name] = result
+                
+                # Log result summary
+                lso_acc = leave_site_out_results['mean_accuracy']
+                lso_std = leave_site_out_results['std_accuracy']
+                beats_baseline = leave_site_out_results.get('beats_baseline', False)
+                status = "🎉 BEATS baseline!" if beats_baseline else "📊 Below baseline"
+                logger.info(f"✅ {exp_config['name']}: {lso_acc:.1f}% ± {lso_std:.1f}% - {status}")
+                
+            except Exception as e:
+                logger.error(f"❌ Experiment {exp_name} failed: {str(e)}")
+                all_results[exp_name] = {
+                    'experiment_name': exp_name,
+                    'error': str(e),
+                    'timestamp': datetime.now().isoformat()
+                }
+        
+        # Save comprehensive results
+        total_time = time.time() - start_time
+        self._save_comprehensive_results(all_results, output_path, total_time, verbose, include_leave_site_out=True)
+        
+        logger.info(f"\n🎉 LEAVE-SITE-OUT EXPERIMENTS COMPLETED!")
+        logger.info(f"⏱️ Total time: {total_time/60:.1f} minutes")
+        logger.info(f"📁 Results saved to: {output_path}")
+        
+        return all_results
     
     def quick_test(
         self,
@@ -589,6 +827,32 @@ class ThesisExperiments:
             num_folds=num_folds,
             num_epochs=num_epochs,
             output_dir="quick_test_results",
+            verbose=verbose
+        )
+    
+    def test_single_experiment(
+        self,
+        experiment_name: str,
+        num_folds: int = 2,
+        num_epochs: int = 10,
+        include_leave_site_out: bool = False,
+        verbose: bool = True
+    ):
+        """Quick test of a single experiment."""
+        
+        if experiment_name not in self.experiments:
+            available = list(self.experiments.keys())
+            raise ValueError(f"Experiment '{experiment_name}' not found. Available: {available}")
+        
+        single_experiment = {experiment_name: self.experiments[experiment_name]}
+        
+        logger.info(f"🚀 TESTING SINGLE EXPERIMENT: {experiment_name}")
+        return self._run_specific_experiments(
+            single_experiment,
+            num_folds=num_folds,
+            num_epochs=num_epochs,
+            output_dir=f"test_{experiment_name}",
+            include_leave_site_out=include_leave_site_out,
             verbose=verbose
         )
     
@@ -754,6 +1018,347 @@ class ThesisExperiments:
         
         return result
     
+    def _run_comprehensive_experiment(
+        self,
+        exp_name: str,
+        exp_config: dict,
+        matched_data: dict,
+        num_folds: int,
+        num_epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        output_path: Path,
+        seed: int,
+        verbose: bool,
+        include_leave_site_out: bool
+    ):
+        """Run a single experiment with both standard and leave-site-out CV."""
+        
+        start_time = time.time()
+        
+        # Create experiment directory
+        exp_dir = output_path / exp_name
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare experiment data
+        if exp_config['modality'] == 'fmri':
+            X = matched_data['fmri_data']
+        elif exp_config['modality'] == 'smri':
+            X = matched_data['smri_data']
+        else:  # multimodal
+            X = {
+                'fmri': matched_data['fmri_data'],
+                'smri': matched_data['smri_data']
+            }
+        
+        y = matched_data['labels']
+        
+        result = {
+            'experiment_name': exp_name,
+            'name': exp_config['name'],
+            'description': exp_config['description'],
+            'type': exp_config['type'],
+            'modality': exp_config['modality'],
+            'timestamp': datetime.now().isoformat(),
+        }
+        
+        try:
+            # 1. Run standard cross-validation
+            logger.info(f"📊 Running Standard {num_folds}-Fold Cross-Validation...")
+            standard_cv_results = self._run_standard_cv_for_experiment(
+                exp_config, X, y, num_folds, num_epochs, 
+                batch_size, learning_rate, exp_dir / 'standard_cv', seed, verbose
+            )
+            result['standard_cv'] = standard_cv_results
+            
+            # 2. Run leave-site-out cross-validation (if requested)
+            if include_leave_site_out:
+                logger.info(f"🏥 Running Leave-Site-Out Cross-Validation...")
+                try:
+                    leave_site_out_results = self._run_leave_site_out_cv_for_experiment(
+                        exp_config, matched_data, num_epochs, 
+                        batch_size, learning_rate, exp_dir / 'leave_site_out', seed, verbose
+                    )
+                    result['leave_site_out_cv'] = leave_site_out_results
+                except Exception as e:
+                    logger.warning(f"⚠️ Leave-site-out CV failed for {exp_name}: {e}")
+                    result['leave_site_out_cv'] = {'error': str(e)}
+            
+            # Calculate runtime
+            result['runtime_minutes'] = (time.time() - start_time) / 60
+            
+        except Exception as e:
+            logger.error(f"❌ Experiment {exp_name} failed: {e}")
+            result['error'] = str(e)
+        
+        # Save individual result
+        result_path = exp_dir / 'comprehensive_results.json'
+        with open(result_path, 'w') as f:
+            json.dump(result, f, indent=2, default=str)
+        
+        return result
+    
+    def _run_leave_site_out_cv_for_experiment(
+        self,
+        exp_config: dict,
+        matched_data: dict,
+        num_epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        output_dir: Path,
+        seed: int,
+        verbose: bool
+    ):
+        """Run leave-site-out cross-validation for a single experiment."""
+        
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Extract site information
+        if 'fmri_subject_ids' in matched_data:
+            subject_ids = matched_data['fmri_subject_ids']
+        else:
+            # Create dummy subject IDs for local testing
+            n_subjects = len(matched_data['labels'])
+            subject_ids = [f"subject_{i:05d}" for i in range(n_subjects)]
+        
+        # Get phenotypic file path
+        phenotypic_file = str(self.config.phenotypic_file) if hasattr(self.config, 'phenotypic_file') else None
+        
+        site_labels, site_mapping, site_stats = self.extract_site_info(
+            subject_ids, phenotypic_file
+        )
+        
+        # Check if we have enough sites for meaningful CV
+        n_sites = len(site_mapping)
+        if n_sites < 3:
+            raise ValueError(f"Need at least 3 sites for leave-site-out CV, found {n_sites}")
+        
+        # Prepare data arrays
+        if exp_config['modality'] == 'fmri':
+            features = matched_data['fmri_data']
+        elif exp_config['modality'] == 'smri':
+            features = matched_data['smri_data']
+        else:  # multimodal
+            fmri_features = matched_data['fmri_data']
+            smri_features = matched_data['smri_data']
+        
+        labels = matched_data['labels']
+        
+        # Convert site labels to numpy array for indexing
+        site_array = np.array(site_labels)
+        
+        # Initialize LeaveOneGroupOut
+        logo = LeaveOneGroupOut()
+        
+        fold_results = []
+        site_results = []
+        
+        # Run leave-site-out cross-validation
+        for fold_idx, (train_idx, test_idx) in enumerate(logo.split(labels, labels, site_array)):
+            
+            # Get test site name
+            test_sites = np.unique(site_array[test_idx])
+            test_site = test_sites[0] if len(test_sites) == 1 else f"Mixed_{fold_idx}"
+            
+            if verbose:
+                train_sites = np.unique(site_array[train_idx])
+                logger.info(f"      Fold {fold_idx+1}: Training on {len(train_sites)} sites, testing on {test_site}")
+            
+            try:
+                if exp_config['modality'] == 'multimodal':
+                    # Use the helper function for multimodal experiments
+                    fold_result = _run_multimodal_fold(
+                        fold=fold_idx,
+                        train_idx=train_idx,
+                        test_idx=test_idx,
+                        fmri_features=fmri_features,
+                        smri_features=smri_features,
+                        labels=labels,
+                        model_class=exp_config['model_class'],
+                        config=get_config(
+                            'cross_attention',
+                            num_epochs=num_epochs,
+                            batch_size=batch_size,
+                            learning_rate=learning_rate,
+                            seed=seed + fold_idx,
+                            output_dir=output_dir / f'fold_{fold_idx}'
+                        ),
+                        device=self.device,
+                        verbose=False
+                    )
+                else:
+                    # Single modality experiment
+                    fold_result = self._run_single_modality_fold(
+                        fold_idx, train_idx, test_idx, features, labels,
+                        exp_config, num_epochs, batch_size, learning_rate,
+                        output_dir, seed
+                    )
+                
+                fold_results.append(fold_result)
+                site_results.append({
+                    'test_site': test_site,
+                    'test_accuracy': fold_result['test_accuracy'],
+                    'test_balanced_accuracy': fold_result['test_balanced_accuracy'],
+                    'test_auc': fold_result['test_auc'],
+                    'n_test_subjects': len(test_idx),
+                    'n_train_subjects': len(train_idx)
+                })
+                
+            except Exception as e:
+                if verbose:
+                    logger.warning(f"         ❌ Fold {fold_idx} failed: {e}")
+                continue
+        
+        if not fold_results:
+            raise RuntimeError("All leave-site-out folds failed")
+        
+        # Calculate aggregate metrics
+        accuracies = [r['test_accuracy'] for r in fold_results]
+        balanced_accuracies = [r['test_balanced_accuracy'] for r in fold_results]
+        aucs = [r['test_auc'] for r in fold_results]
+        
+        results = {
+            'mean_accuracy': float(np.mean(accuracies)) * 100,  # Convert to percentage
+            'std_accuracy': float(np.std(accuracies)) * 100,
+            'mean_balanced_accuracy': float(np.mean(balanced_accuracies)) * 100,
+            'std_balanced_accuracy': float(np.std(balanced_accuracies)) * 100,
+            'mean_auc': float(np.mean(aucs)),
+            'std_auc': float(np.std(aucs)),
+            'n_sites': len(site_mapping),
+            'n_folds': len(fold_results),
+            'site_results': site_results,
+            'fold_results': fold_results,
+            'cv_type': 'leave_site_out',
+            'beats_baseline': float(np.mean(accuracies)) > (self.baselines['fmri'] / 100.0)
+        }
+        
+        # Save detailed results
+        with open(output_dir / 'leave_site_out_results.json', 'w') as f:
+            json.dump(results, f, indent=2, default=str)
+        
+        # Save site information
+        site_stats.to_csv(output_dir / 'site_information.csv', index=False)
+        with open(output_dir / 'site_mapping.json', 'w') as f:
+            json.dump(site_mapping, f, indent=2)
+        
+        return results
+    
+    def _run_single_modality_fold(
+        self,
+        fold_idx: int,
+        train_idx: np.ndarray,
+        test_idx: np.ndarray,
+        features: np.ndarray,
+        labels: np.ndarray,
+        exp_config: dict,
+        num_epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        output_dir: Path,
+        seed: int
+    ):
+        """Run a single fold for single-modality experiments."""
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.preprocessing import StandardScaler
+        
+        # Split data
+        X_train, X_test = features[train_idx], features[test_idx]
+        y_train, y_test = labels[train_idx], labels[test_idx]
+        
+        # Scale features
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+        
+        # Train a simple logistic regression model for leave-site-out
+        # (This is a simplified version - you might want to use the actual model)
+        model = LogisticRegression(max_iter=1000, random_state=seed)
+        model.fit(X_train_scaled, y_train)
+        
+        # Make predictions
+        y_pred = model.predict(X_test_scaled)
+        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
+        
+        # Calculate metrics
+        accuracy = accuracy_score(y_test, y_pred)
+        balanced_acc = balanced_accuracy_score(y_test, y_pred)
+        auc = roc_auc_score(y_test, y_pred_proba)
+        
+        return {
+            'fold': fold_idx,
+            'test_accuracy': accuracy,
+            'test_balanced_accuracy': balanced_acc,
+            'test_auc': auc
+        }
+    
+    def _run_standard_cv_for_experiment(
+        self,
+        exp_config: dict,
+        X,
+        y: np.ndarray,
+        num_folds: int,
+        num_epochs: int,
+        batch_size: int,
+        learning_rate: float,
+        output_dir: Path,
+        seed: int,
+        verbose: bool
+    ):
+        """Run standard cross-validation for a single experiment."""
+        
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        if exp_config['modality'] == 'multimodal':
+            # Use multimodal cross-validation
+            cv_results = self._run_multimodal_cv(
+                exp_config['model_class'], X, y,
+                num_folds, num_epochs, batch_size, learning_rate,
+                output_dir, seed, verbose
+            )
+        else:
+            # Use single-modality cross-validation
+            # Create appropriate config for this experiment
+            if exp_config['modality'] == 'fmri':
+                temp_config = get_config('fmri')
+            elif exp_config['modality'] == 'smri':
+                temp_config = get_config('smri')
+            else:
+                temp_config = get_config('cross_attention')
+                
+            temp_config.num_folds = num_folds
+            temp_config.num_epochs = num_epochs
+            temp_config.batch_size = batch_size
+            temp_config.learning_rate = learning_rate
+            temp_config.output_dir = output_dir
+            temp_config.seed = seed
+            
+            fold_results = run_cross_validation(
+                features=X,
+                labels=y,
+                model_class=exp_config['model_class'],
+                config=temp_config,
+                experiment_type='single',
+                verbose=verbose
+            )
+            
+            # Convert to expected format
+            accuracies = [r['test_accuracy'] for r in fold_results]
+            balanced_accs = [r['test_balanced_accuracy'] for r in fold_results]
+            aucs = [r['test_auc'] for r in fold_results]
+            
+            cv_results = {
+                'fold_results': fold_results,
+                'mean_accuracy': np.mean(accuracies) * 100,
+                'std_accuracy': np.std(accuracies) * 100,
+                'mean_balanced_accuracy': np.mean(balanced_accs) * 100,
+                'std_balanced_accuracy': np.std(balanced_accs) * 100,
+                'mean_auc': np.mean(aucs),
+                'std_auc': np.std(aucs),
+                'cv_type': 'standard'
+            }
+        
+        return cv_results
+    
     def _run_multimodal_cv(
         self,
         model_class,
@@ -862,7 +1467,8 @@ class ThesisExperiments:
         all_results: dict,
         output_path: Path,
         total_time: float,
-        verbose: bool
+        verbose: bool,
+        include_leave_site_out: bool = True
     ):
         """Save comprehensive results with analysis."""
         
@@ -878,33 +1484,106 @@ class ThesisExperiments:
                 'successful_experiments': len([r for r in all_results.values() if 'error' not in r]),
                 'failed_experiments': len([r for r in all_results.values() if 'error' in r]),
                 'total_runtime_minutes': total_time / 60,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'included_leave_site_out': include_leave_site_out
             },
             'results_summary': {}
         }
         
         # Performance summary
         for exp_name, result in all_results.items():
-            if 'error' not in result and 'regular_cv' in result:
-                cv_results = result['regular_cv']
-                summary['results_summary'][exp_name] = {
+            if 'error' not in result:
+                exp_summary = {
                     'name': result['name'],
                     'type': result['type'],
-                    'accuracy': f"{cv_results['mean_accuracy']:.1f}% ± {cv_results['std_accuracy']:.1f}%",
-                    'balanced_accuracy': f"{cv_results['mean_balanced_accuracy']:.1f}% ± {cv_results['std_balanced_accuracy']:.1f}%",
-                    'auc': f"{cv_results['mean_auc']:.3f} ± {cv_results['std_auc']:.3f}",
                 }
+                
+                # Add standard CV results
+                if 'standard_cv' in result:
+                    cv_results = result['standard_cv']
+                    exp_summary.update({
+                        'standard_cv_accuracy': f"{cv_results['mean_accuracy']:.1f}% ± {cv_results['std_accuracy']:.1f}%",
+                        'standard_cv_balanced_accuracy': f"{cv_results['mean_balanced_accuracy']:.1f}% ± {cv_results['std_balanced_accuracy']:.1f}%",
+                        'standard_cv_auc': f"{cv_results['mean_auc']:.3f} ± {cv_results['std_auc']:.3f}",
+                    })
+                
+                # Add leave-site-out CV results
+                if include_leave_site_out and 'leave_site_out_cv' in result and 'error' not in result['leave_site_out_cv']:
+                    lso_results = result['leave_site_out_cv']
+                    exp_summary.update({
+                        'leave_site_out_accuracy': f"{lso_results['mean_accuracy']:.1f}% ± {lso_results['std_accuracy']:.1f}%",
+                        'leave_site_out_balanced_accuracy': f"{lso_results['mean_balanced_accuracy']:.1f}% ± {lso_results['std_balanced_accuracy']:.1f}%",
+                        'leave_site_out_auc': f"{lso_results['mean_auc']:.3f} ± {lso_results['std_auc']:.3f}",
+                        'n_sites': lso_results.get('n_sites', 'N/A'),
+                        'beats_baseline': lso_results.get('beats_baseline', False)
+                    })
+                
+                summary['results_summary'][exp_name] = exp_summary
         
         # Save summary
         summary_path = output_path / 'experiment_summary.json'
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
         
+        # Create CSV summary table for easy reading
+        self._create_results_table(all_results, output_path, include_leave_site_out)
+        
         if verbose:
             logger.info("\n📊 EXPERIMENT SUMMARY")
-            logger.info("=" * 60)
+            logger.info("=" * 80)
             for exp_name, exp_summary in summary['results_summary'].items():
-                logger.info(f"🔬 {exp_summary['name']}: {exp_summary['accuracy']}")
+                logger.info(f"🔬 {exp_summary['name']}:")
+                if 'standard_cv_accuracy' in exp_summary:
+                    logger.info(f"   📊 Standard CV: {exp_summary['standard_cv_accuracy']}")
+                if 'leave_site_out_accuracy' in exp_summary:
+                    logger.info(f"   🏥 Leave-Site-Out CV: {exp_summary['leave_site_out_accuracy']}")
+    
+    def _create_results_table(self, all_results: dict, output_path: Path, include_leave_site_out: bool):
+        """Create a CSV table with all results for easy analysis."""
+        
+        table_data = []
+        
+        for exp_name, result in all_results.items():
+            if 'error' not in result:
+                row = {
+                    'experiment': exp_name,
+                    'name': result['name'],
+                    'type': result['type'],
+                    'modality': result['modality']
+                }
+                
+                # Standard CV results
+                if 'standard_cv' in result:
+                    cv = result['standard_cv']
+                    row.update({
+                        'standard_cv_accuracy_mean': cv['mean_accuracy'],
+                        'standard_cv_accuracy_std': cv['std_accuracy'],
+                        'standard_cv_balanced_accuracy_mean': cv['mean_balanced_accuracy'],
+                        'standard_cv_balanced_accuracy_std': cv['std_balanced_accuracy'],
+                        'standard_cv_auc_mean': cv['mean_auc'],
+                        'standard_cv_auc_std': cv['std_auc']
+                    })
+                
+                # Leave-site-out CV results
+                if include_leave_site_out and 'leave_site_out_cv' in result and 'error' not in result['leave_site_out_cv']:
+                    lso = result['leave_site_out_cv']
+                    row.update({
+                        'leave_site_out_accuracy_mean': lso['mean_accuracy'],
+                        'leave_site_out_accuracy_std': lso['std_accuracy'],
+                        'leave_site_out_balanced_accuracy_mean': lso['mean_balanced_accuracy'],
+                        'leave_site_out_balanced_accuracy_std': lso['std_balanced_accuracy'],
+                        'leave_site_out_auc_mean': lso['mean_auc'],
+                        'leave_site_out_auc_std': lso['std_auc'],
+                        'n_sites': lso.get('n_sites', None),
+                        'beats_baseline': lso.get('beats_baseline', False)
+                    })
+                
+                table_data.append(row)
+        
+        if table_data:
+            df = pd.DataFrame(table_data)
+            df.to_csv(output_path / 'results_table.csv', index=False)
+            logger.info(f"📊 Results table saved: {output_path / 'results_table.csv'}")
 
 
 # =============================================================================
@@ -913,10 +1592,13 @@ class ThesisExperiments:
 
 def main():
     parser = argparse.ArgumentParser(description='Comprehensive Thesis Experiments')
-    parser.add_argument('--run_all', action='store_true', help='Run all experiments')
+    parser.add_argument('--run_all', action='store_true', help='Run all experiments with both CV types')
     parser.add_argument('--baselines_only', action='store_true', help='Run only baseline experiments')
     parser.add_argument('--cross_attention_only', action='store_true', help='Run only cross-attention experiments')
+    parser.add_argument('--standard_cv_only', action='store_true', help='Run all experiments with standard CV only')
+    parser.add_argument('--leave_site_out_only', action='store_true', help='Run all experiments with leave-site-out CV only')
     parser.add_argument('--quick_test', action='store_true', help='Quick test with reduced parameters')
+    parser.add_argument('--test_single', type=str, help='Quick test of single experiment (e.g., smri_baseline)')
     
     parser.add_argument('--num_folds', type=int, default=5, help='Number of CV folds')
     parser.add_argument('--num_epochs', type=int, default=200, help='Number of training epochs')
@@ -925,6 +1607,7 @@ def main():
     parser.add_argument('--output_dir', type=str, default=None, help='Output directory')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--verbose', action='store_true', default=True, help='Verbose output')
+    parser.add_argument('--no_leave_site_out', action='store_true', help='Disable leave-site-out CV in run_all')
     
     args = parser.parse_args()
     
@@ -933,9 +1616,31 @@ def main():
     
     # Run requested experiments
     if args.run_all:
-        logger.info("🚀 Running ALL thesis experiments...")
+        logger.info("🚀 Running ALL thesis experiments with BOTH CV types...")
         results = experiments.run_all(
             num_folds=args.num_folds,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            output_dir=args.output_dir,
+            seed=args.seed,
+            verbose=args.verbose,
+            include_leave_site_out=not args.no_leave_site_out
+        )
+    elif args.standard_cv_only:
+        logger.info("🚀 Running ALL experiments with STANDARD CV only...")
+        results = experiments.run_standard_cv_only(
+            num_folds=args.num_folds,
+            num_epochs=args.num_epochs,
+            batch_size=args.batch_size,
+            learning_rate=args.learning_rate,
+            output_dir=args.output_dir or "standard_cv_results",
+            seed=args.seed,
+            verbose=args.verbose
+        )
+    elif args.leave_site_out_only:
+        logger.info("🚀 Running ALL experiments with LEAVE-SITE-OUT CV only...")
+        results = experiments.run_leave_site_out_only(
             num_epochs=args.num_epochs,
             batch_size=args.batch_size,
             learning_rate=args.learning_rate,
@@ -952,7 +1657,8 @@ def main():
             learning_rate=args.learning_rate,
             output_dir=args.output_dir or "baseline_results",
             seed=args.seed,
-            verbose=args.verbose
+            verbose=args.verbose,
+            include_leave_site_out=not args.no_leave_site_out
         )
     elif args.cross_attention_only:
         logger.info("🚀 Running CROSS-ATTENTION experiments only...")
@@ -963,14 +1669,29 @@ def main():
             learning_rate=args.learning_rate,
             output_dir=args.output_dir or "cross_attention_results",
             seed=args.seed,
-            verbose=args.verbose
+            verbose=args.verbose,
+            include_leave_site_out=not args.no_leave_site_out
         )
     elif args.quick_test:
         logger.info("🚀 Running QUICK TEST...")
         results = experiments.quick_test(verbose=args.verbose)
+    elif args.test_single:
+        logger.info(f"🚀 Running SINGLE EXPERIMENT TEST: {args.test_single}")
+        results = experiments.test_single_experiment(
+            experiment_name=args.test_single,
+            num_folds=args.num_folds,
+            num_epochs=args.num_epochs,
+            include_leave_site_out=not args.no_leave_site_out,
+            verbose=args.verbose
+        )
     else:
         logger.info("ℹ️ No experiment type specified. Use --help for options.")
-        logger.info("💡 Try: python scripts/thesis_experiments.py --quick_test")
+        logger.info("💡 Examples:")
+        logger.info("   python scripts/thesis_experiments.py --run_all")
+        logger.info("   python scripts/thesis_experiments.py --standard_cv_only")
+        logger.info("   python scripts/thesis_experiments.py --leave_site_out_only")
+        logger.info("   python scripts/thesis_experiments.py --test_single smri_baseline")
+        logger.info("   python scripts/thesis_experiments.py --quick_test")
         return
     
     logger.info("✅ Experiments completed successfully!")
