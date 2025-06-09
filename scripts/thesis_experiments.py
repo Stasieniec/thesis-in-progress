@@ -38,6 +38,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.model_selection import StratifiedKFold, LeaveOneGroupOut
 from sklearn.metrics import accuracy_score, roc_auc_score, balanced_accuracy_score, confusion_matrix
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
 from scipy import stats
 from collections import defaultdict
 
@@ -921,6 +923,110 @@ class ThesisExperiments:
         
         return results
     
+    def compare_smri_models(
+        self,
+        num_folds: int = 3,
+        verbose: bool = True
+    ):
+        """Compare sMRI Transformer vs. simple Logistic Regression to debug performance."""
+        
+        if verbose:
+            logger.info("🔬 COMPARING sMRI MODELS: Transformer vs. Logistic Regression")
+            logger.info("=" * 70)
+        
+        # Load data
+        matched_data = self._load_matched_data(verbose=False)
+        X = matched_data['smri_data']
+        y = matched_data['labels']
+        
+        # Compare models
+        results = {}
+        
+        # 1. Test Logistic Regression (Simple baseline)
+        if verbose:
+            logger.info("🧮 Testing Logistic Regression...")
+        
+        skf = StratifiedKFold(n_splits=num_folds, shuffle=True, random_state=42)
+        lr_scores = []
+        
+        for train_idx, test_idx in skf.split(X, y):
+            X_train, X_test = X[train_idx], X[test_idx]
+            y_train, y_test = y[train_idx], y[test_idx]
+            
+            # Scale features
+            scaler = StandardScaler()
+            X_train_scaled = scaler.fit_transform(X_train)
+            X_test_scaled = scaler.transform(X_test)
+            
+            # Train logistic regression
+            lr = LogisticRegression(max_iter=1000, random_state=42)
+            lr.fit(X_train_scaled, y_train)
+            
+            # Evaluate
+            y_pred = lr.predict(X_test_scaled)
+            acc = accuracy_score(y_test, y_pred)
+            lr_scores.append(acc)
+        
+        lr_mean = np.mean(lr_scores) * 100
+        lr_std = np.std(lr_scores) * 100
+        results['logistic_regression'] = lr_mean
+        
+        if verbose:
+            logger.info(f"   Result: {lr_mean:.1f}% ± {lr_std:.1f}%")
+        
+        # 2. Test sMRI Transformer (Current approach)
+        if verbose:
+            logger.info("🧠 Testing sMRI Transformer...")
+        
+        try:
+            result = self.test_single_experiment(
+                experiment_name='smri_baseline',
+                num_folds=num_folds,
+                num_epochs=20,  # Fewer epochs for faster comparison
+                include_leave_site_out=False,
+                verbose=False
+            )
+            
+            if 'standard_cv' in result and 'mean_accuracy' in result['standard_cv']:
+                transformer_mean = result['standard_cv']['mean_accuracy']
+                results['transformer'] = transformer_mean
+                
+                if verbose:
+                    logger.info(f"   Result: {transformer_mean:.1f}%")
+            else:
+                if verbose:
+                    logger.error("   Failed to get transformer results")
+                results['transformer'] = 0.0
+                
+        except Exception as e:
+            if verbose:
+                logger.error(f"   Transformer failed: {e}")
+            results['transformer'] = 0.0
+        
+        # 3. Summary
+        if verbose:
+            logger.info("\n📊 MODEL COMPARISON RESULTS:")
+            logger.info("-" * 40)
+            
+            lr_acc = results.get('logistic_regression', 0)
+            tf_acc = results.get('transformer', 0)
+            
+            logger.info(f"   Logistic Regression: {lr_acc:.1f}%")
+            logger.info(f"   sMRI Transformer:    {tf_acc:.1f}%")
+            
+            if lr_acc > tf_acc + 5:  # More than 5% difference
+                logger.info("   🚨 ISSUE: Transformer significantly underperforming!")
+                logger.info("   💡 Suggestions:")
+                logger.info("      - Transformer may be overfitting")
+                logger.info("      - Hyperparameters need adjustment")
+                logger.info("      - Consider simpler architecture")
+            elif tf_acc > lr_acc + 5:
+                logger.info("   ✅ GOOD: Transformer outperforming simple model")
+            else:
+                logger.info("   ⚖️ SIMILAR: Both models perform comparably")
+        
+        return results
+    
     def quick_test(
         self,
         experiments: List[str] = None,
@@ -1382,38 +1488,83 @@ class ThesisExperiments:
         output_dir: Path,
         seed: int
     ):
-        """Run a single fold for single-modality experiments."""
-        from sklearn.linear_model import LogisticRegression
-        from sklearn.preprocessing import StandardScaler
+        """Run a single fold for single-modality experiments using the actual model."""
+        import torch
+        from torch.utils.data import DataLoader, TensorDataset
+        from training import Trainer
+        from training.set_seed import set_seed
+        
+        set_seed(seed)
         
         # Split data
         X_train, X_test = features[train_idx], features[test_idx]
         y_train, y_test = labels[train_idx], labels[test_idx]
         
-        # Scale features
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
+        # Convert to tensors
+        X_train_tensor = torch.FloatTensor(X_train)
+        X_test_tensor = torch.FloatTensor(X_test)
+        y_train_tensor = torch.LongTensor(y_train)
+        y_test_tensor = torch.LongTensor(y_test)
         
-        # Train a simple logistic regression model for leave-site-out
-        # (This is a simplified version - you might want to use the actual model)
-        model = LogisticRegression(max_iter=1000, random_state=seed)
-        model.fit(X_train_scaled, y_train)
+        # Create data loaders
+        train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+        test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
         
-        # Make predictions
-        y_pred = model.predict(X_test_scaled)
-        y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         
-        # Calculate metrics
-        accuracy = accuracy_score(y_test, y_pred)
-        balanced_acc = balanced_accuracy_score(y_test, y_pred)
-        auc = roc_auc_score(y_test, y_pred_proba)
+        # Create model instance
+        model_class = exp_config['model_class']
+        
+        # Get input dimension
+        input_dim = features.shape[1]
+        
+        # Create model with optimized parameters for sMRI
+        if exp_config['modality'] == 'smri':
+            model = model_class(
+                input_dim=input_dim,
+                d_model=64,  # Optimized for sMRI
+                n_heads=4,
+                n_layers=2,
+                dropout=0.3
+            ).to(self.device)
+        else:
+            model = model_class(input_dim=input_dim).to(self.device)
+        
+        # Create config for this fold
+        temp_config = get_config(exp_config['modality'])
+        temp_config.num_epochs = num_epochs
+        temp_config.batch_size = batch_size
+        temp_config.learning_rate = learning_rate
+        temp_config.seed = seed
+        temp_config.output_dir = output_dir
+        
+        # Apply sMRI optimizations
+        if exp_config['modality'] == 'smri':
+            temp_config.learning_rate = 0.001
+            temp_config.use_class_weights = True
+            temp_config.label_smoothing = 0.1
+            temp_config.patience = 10
+        
+        # Train model
+        trainer = Trainer(model, self.device, temp_config, model_type='single')
+        
+        # Train with validation split from training data
+        history = trainer.fit(
+            train_loader, train_loader,  # Use train_loader for both (simple setup)
+            num_epochs=num_epochs,
+            checkpoint_path=None,  # Don't save checkpoints for fold training
+            y_train=y_train
+        )
+        
+        # Evaluate on test set
+        test_metrics = trainer.evaluate_final(test_loader)
         
         return {
             'fold': fold_idx,
-            'test_accuracy': accuracy,
-            'test_balanced_accuracy': balanced_acc,
-            'test_auc': auc
+            'test_accuracy': test_metrics['accuracy'],
+            'test_balanced_accuracy': test_metrics['balanced_accuracy'],
+            'test_auc': test_metrics['auc']
         }
     
     def _run_standard_cv_for_experiment(
@@ -1743,6 +1894,8 @@ def main():
     parser.add_argument('--leave_site_out_only', action='store_true', help='Run all experiments with leave-site-out CV only')
     parser.add_argument('--quick_test', action='store_true', help='Quick test with reduced parameters')
     parser.add_argument('--test_single', type=str, help='Quick test of single experiment (e.g., smri_baseline)')
+    parser.add_argument('--compare_smri', action='store_true', help='Compare sMRI Transformer vs. Logistic Regression')
+    parser.add_argument('--debug_smri', action='store_true', help='Debug sMRI performance across different configurations')
     
     parser.add_argument('--num_folds', type=int, default=5, help='Number of CV folds')
     parser.add_argument('--num_epochs', type=int, default=200, help='Number of training epochs')
@@ -1828,6 +1981,18 @@ def main():
             include_leave_site_out=not args.no_leave_site_out,
             verbose=args.verbose
         )
+    elif args.compare_smri:
+        logger.info("🔬 Comparing sMRI models...")
+        results = experiments.compare_smri_models(
+            num_folds=args.num_folds,
+            verbose=args.verbose
+        )
+    elif args.debug_smri:
+        logger.info("🔍 Debugging sMRI performance...")
+        results = experiments.debug_smri_performance(
+            num_epochs=args.num_epochs,
+            verbose=args.verbose
+        )
     else:
         logger.info("ℹ️ No experiment type specified. Use --help for options.")
         logger.info("💡 Examples:")
@@ -1835,6 +2000,8 @@ def main():
         logger.info("   python scripts/thesis_experiments.py --standard_cv_only")
         logger.info("   python scripts/thesis_experiments.py --leave_site_out_only")
         logger.info("   python scripts/thesis_experiments.py --test_single smri_baseline")
+        logger.info("   python scripts/thesis_experiments.py --compare_smri")
+        logger.info("   python scripts/thesis_experiments.py --debug_smri")
         logger.info("   python scripts/thesis_experiments.py --quick_test")
         return
     
