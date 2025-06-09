@@ -1491,45 +1491,80 @@ class ThesisExperiments:
         """Run a single fold for single-modality experiments using the actual model."""
         import torch
         from torch.utils.data import DataLoader, TensorDataset
-        from training import Trainer
-        from training.set_seed import set_seed
+        from sklearn.model_selection import train_test_split
+        from sklearn.preprocessing import StandardScaler
+        from src.training import Trainer, set_seed
         
         set_seed(seed)
         
         # Split data
-        X_train, X_test = features[train_idx], features[test_idx]
-        y_train, y_test = labels[train_idx], labels[test_idx]
+        X_train_fold, X_test = features[train_idx], features[test_idx]
+        y_train_fold, y_test = labels[train_idx], labels[test_idx]
+        
+        # **CRITICAL FIX**: Create proper train/validation split
+        X_train, X_val, y_train, y_val = train_test_split(
+            X_train_fold, y_train_fold,
+            test_size=0.2,
+            stratify=y_train_fold,
+            random_state=seed + fold_idx
+        )
+        
+        # **CRITICAL FIX**: Apply proper preprocessing for sMRI
+        if exp_config['modality'] == 'smri':
+            # Standardize features (essential for sMRI)
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_val = scaler.transform(X_val)
+            X_test = scaler.transform(X_test)
+        else:
+            # Basic standardization for fMRI
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_val = scaler.transform(X_val)
+            X_test = scaler.transform(X_test)
         
         # Convert to tensors
         X_train_tensor = torch.FloatTensor(X_train)
+        X_val_tensor = torch.FloatTensor(X_val)
         X_test_tensor = torch.FloatTensor(X_test)
         y_train_tensor = torch.LongTensor(y_train)
+        y_val_tensor = torch.LongTensor(y_val)
         y_test_tensor = torch.LongTensor(y_test)
         
         # Create data loaders
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+        val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
         test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
         
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         
         # Create model instance
         model_class = exp_config['model_class']
         
-        # Get input dimension
-        input_dim = features.shape[1]
+        # Get input dimension (after preprocessing)
+        input_dim = X_train.shape[1]
         
-        # Create model with optimized parameters for sMRI
+        # **CRITICAL FIX**: Create model with correct parameters
         if exp_config['modality'] == 'smri':
             model = model_class(
                 input_dim=input_dim,
                 d_model=64,  # Optimized for sMRI
                 n_heads=4,
                 n_layers=2,
-                dropout=0.3
+                dropout=0.3,
+                layer_dropout=0.1
             ).to(self.device)
         else:
-            model = model_class(input_dim=input_dim).to(self.device)
+            # fMRI model has different parameter structure
+            model = model_class(
+                feat_dim=input_dim,
+                d_model=256,
+                num_heads=8,
+                num_layers=4,
+                dropout=0.1
+            ).to(self.device)
         
         # Create config for this fold
         temp_config = get_config(exp_config['modality'])
@@ -1539,19 +1574,21 @@ class ThesisExperiments:
         temp_config.seed = seed
         temp_config.output_dir = output_dir
         
-        # Apply sMRI optimizations
+        # **CRITICAL FIX**: Apply proven sMRI optimizations
         if exp_config['modality'] == 'smri':
-            temp_config.learning_rate = 0.001
+            temp_config.learning_rate = 0.001  # Higher LR for sMRI
+            temp_config.weight_decay = 1e-4
             temp_config.use_class_weights = True
             temp_config.label_smoothing = 0.1
-            temp_config.patience = 10
+            temp_config.early_stop_patience = 15
+            temp_config.gradient_clip_norm = 1.0
         
-        # Train model
+        # **CRITICAL FIX**: Use proper trainer initialization
         trainer = Trainer(model, self.device, temp_config, model_type='single')
         
-        # Train with validation split from training data
+        # **CRITICAL FIX**: Train with proper validation
         history = trainer.fit(
-            train_loader, train_loader,  # Use train_loader for both (simple setup)
+            train_loader, val_loader,  # Proper train/val split
             num_epochs=num_epochs,
             checkpoint_path=None,  # Don't save checkpoints for fold training
             y_train=y_train
@@ -1564,7 +1601,10 @@ class ThesisExperiments:
             'fold': fold_idx,
             'test_accuracy': test_metrics['accuracy'],
             'test_balanced_accuracy': test_metrics['balanced_accuracy'],
-            'test_auc': test_metrics['auc']
+            'test_auc': test_metrics['auc'],
+            'train_size': len(y_train),
+            'val_size': len(y_val),
+            'test_size': len(y_test)
         }
     
     def _run_standard_cv_for_experiment(
