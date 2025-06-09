@@ -62,15 +62,15 @@ def advanced_smri_search(
     # Check if we're in Colab
     if Path('/content/drive').exists():
         # Real data
-        config = get_config('smri')
+        config = get_config('cross_attention')  # Use cross_attention config like original
         matched_data = get_matched_datasets(
             fmri_roi_dir=str(config.fmri_roi_dir),
             smri_data_path=str(config.smri_data_path),
             phenotypic_file=str(config.phenotypic_file),
             verbose=True
         )
-        smri_data = matched_data['smri_data']
-        labels = matched_data['labels']
+        smri_data = matched_data['smri_features']
+        labels = matched_data['smri_labels']
     else:
         # Mock data for local testing
         logger.info("🔬 Local testing mode - creating mock data")
