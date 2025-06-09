@@ -1,21 +1,21 @@
 """Advanced trainer for ABIDE experiments."""
 
+import os
+import warnings
+from typing import Dict, List, Any, Optional
+from pathlib import Path
+from collections import defaultdict
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional, Any
-from collections import defaultdict
-from tqdm import tqdm
 from torch.utils.data import DataLoader
-from torch.cuda.amp import autocast, GradScaler
+from torch.optim import AdamW
 from torch.optim.lr_scheduler import ExponentialLR
-
-from sklearn.metrics import (
-    accuracy_score, balanced_accuracy_score, 
-    roc_auc_score, confusion_matrix
-)
+from torch.amp import GradScaler, autocast
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
+from tqdm import tqdm
 
 from training.utils import EarlyStopping, calculate_class_weights
 
@@ -45,7 +45,7 @@ class Trainer:
         self.model_type = model_type
 
         # Optimizer (AdamW as recommended)
-        self.optimizer = torch.optim.AdamW(
+        self.optimizer = AdamW(
             model.parameters(),
             lr=config.learning_rate,
             weight_decay=config.weight_decay
@@ -58,7 +58,7 @@ class Trainer:
         self.criterion = nn.CrossEntropyLoss()
 
         # Mixed precision training
-        self.scaler = GradScaler() if config.use_mixed_precision else None
+        self.scaler = GradScaler('cuda') if config.use_mixed_precision else None
 
         # Metrics tracking
         self.history = defaultdict(list)
@@ -94,7 +94,7 @@ class Trainer:
 
             # Mixed precision training
             if self.scaler:
-                with autocast():
+                with autocast(device_type='cuda'):
                     if self.model_type == 'multimodal':
                         outputs = self.model(*inputs)
                     else:
@@ -171,7 +171,7 @@ class Trainer:
                     targets = targets.to(self.device)
 
                 if self.scaler:
-                    with autocast():
+                    with autocast(device_type='cuda'):
                         if self.model_type == 'multimodal':
                             outputs = self.model(*inputs)
                         else:

@@ -1330,19 +1330,30 @@ class ThesisExperiments:
         temp_config.label_smoothing = params['label_smoothing']
         temp_config.early_stop_patience = 15
         temp_config.output_dir = Path('./temp_search_results')
+        temp_config.output_dir.mkdir(exist_ok=True)
         
         # Train model
         trainer = Trainer(model, self.device, temp_config, model_type='single')
         
+        # Create temporary checkpoint path
+        checkpoint_path = temp_config.output_dir / f'temp_model_fold_{fold}.pth'
+        
         history = trainer.fit(
             train_loader, val_loader,
             num_epochs=num_epochs,
-            checkpoint_path=None,
+            checkpoint_path=checkpoint_path,
             y_train=y_train
         )
         
         # Evaluate
         test_metrics = trainer.evaluate_final(test_loader)
+        
+        # Clean up temporary checkpoint file
+        try:
+            if checkpoint_path.exists():
+                checkpoint_path.unlink()
+        except Exception:
+            pass  # Ignore cleanup errors
         
         return {
             'fold': fold,
@@ -1937,16 +1948,26 @@ class ThesisExperiments:
         # **CRITICAL FIX**: Use proper trainer initialization
         trainer = Trainer(model, self.device, temp_config, model_type='single')
         
+        # Create temporary checkpoint path for this fold
+        checkpoint_path = output_dir / f'temp_fold_{fold_idx}_model.pth'
+        
         # **CRITICAL FIX**: Train with proper validation
         history = trainer.fit(
             train_loader, val_loader,  # Proper train/val split
             num_epochs=num_epochs,
-            checkpoint_path=None,  # Don't save checkpoints for fold training
+            checkpoint_path=checkpoint_path,  # Use temporary checkpoint path
             y_train=y_train
         )
         
         # Evaluate on test set
         test_metrics = trainer.evaluate_final(test_loader)
+        
+        # Clean up temporary checkpoint file
+        try:
+            if checkpoint_path.exists():
+                checkpoint_path.unlink()
+        except Exception:
+            pass  # Ignore cleanup errors
         
         return {
             'fold': fold_idx,
