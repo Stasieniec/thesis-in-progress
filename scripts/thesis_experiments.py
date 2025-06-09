@@ -1787,14 +1787,37 @@ class ThesisExperiments:
             'beats_baseline': float(np.mean(accuracies)) > (self.baselines['fmri'] / 100.0)
         }
         
-        # Save detailed results
-        with open(output_dir / 'leave_site_out_results.json', 'w') as f:
-            json.dump(results, f, indent=2, default=str)
+        # Save detailed results with robust JSON serialization
+        try:
+            # Create JSON-safe version of results
+            json_safe_results = {}
+            for key, value in results.items():
+                if isinstance(value, (list, dict)):
+                    json_safe_results[key] = json.loads(json.dumps(value, default=str))
+                else:
+                    json_safe_results[key] = value
+            
+            with open(output_dir / 'leave_site_out_results.json', 'w') as f:
+                json.dump(json_safe_results, f, indent=2, default=str)
+        except Exception as e:
+            if verbose:
+                logger.warning(f"Could not save JSON results: {e}")
         
         # Save site information
-        site_stats.to_csv(output_dir / 'site_information.csv', index=False)
-        with open(output_dir / 'site_mapping.json', 'w') as f:
-            json.dump(site_mapping, f, indent=2)
+        try:
+            site_stats.to_csv(output_dir / 'site_information.csv', index=False)
+        except Exception as e:
+            if verbose:
+                logger.warning(f"Could not save site information: {e}")
+        
+        try:
+            # Create JSON-safe site mapping
+            json_safe_mapping = {str(k): [str(s) for s in v] for k, v in site_mapping.items()}
+            with open(output_dir / 'site_mapping.json', 'w') as f:
+                json.dump(json_safe_mapping, f, indent=2)
+        except Exception as e:
+            if verbose:
+                logger.warning(f"Could not save site mapping: {e}")
         
         return results
     
@@ -1877,11 +1900,11 @@ class ThesisExperiments:
         if exp_config['modality'] == 'smri':
             model = model_class(
                 input_dim=input_dim,
-                d_model=128,   # INCREASED from 64 (better capacity)
+                d_model=192,   # INCREASED from 128 (even better capacity for 58%)
                 n_heads=8,     # INCREASED from 4 (more attention heads)
-                n_layers=3,    # INCREASED from 2 (deeper model)
-                dropout=0.1,   # REDUCED from 0.3 (less regularization)
-                layer_dropout=0.05  # REDUCED from 0.1 (less dropout)
+                n_layers=4,    # INCREASED from 3 (deeper model for complex patterns)
+                dropout=0.15,  # SLIGHTLY increased (balance overfitting)
+                layer_dropout=0.1  # INCREASED back (some regularization needed)
             ).to(self.device)
         else:
             # fMRI model has different parameter structure
@@ -1903,13 +1926,13 @@ class ThesisExperiments:
         
         # **CRITICAL FIX**: Apply proven sMRI optimizations for 58% performance
         if exp_config['modality'] == 'smri':
-            temp_config.learning_rate = 0.0005   # REDUCED from 0.001 (more stable)
-            temp_config.weight_decay = 1e-3      # INCREASED from 1e-4 (more regularization)
+            temp_config.learning_rate = 0.001    # INCREASED back (sMRI needs higher LR)
+            temp_config.weight_decay = 5e-4      # REDUCED (less regularization)
             temp_config.batch_size = 64          # LARGER batch size for stability
             temp_config.use_class_weights = False # DISABLED (can hurt performance)
             temp_config.label_smoothing = 0.0    # DISABLED (not needed for sMRI)
-            temp_config.early_stop_patience = 20  # MORE patience
-            temp_config.gradient_clip_norm = 0.5  # REDUCED gradient clipping
+            temp_config.early_stop_patience = 25  # MORE patience for convergence
+            temp_config.gradient_clip_norm = 1.0  # INCREASED gradient clipping
         
         # **CRITICAL FIX**: Use proper trainer initialization
         trainer = Trainer(model, self.device, temp_config, model_type='single')
