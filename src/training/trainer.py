@@ -54,7 +54,7 @@ class ComprehensiveTrainer:
         # Initialize optimizers and schedulers
         self.optimizer = self._create_optimizer()
         self.scheduler = self._create_scheduler()
-        self.criterion = self._create_criterion()
+        self.criterion = None  # Will be created in fit() with training data
         self.scaler = torch.amp.GradScaler('cuda') if device.type == 'cuda' else None
         
         # Metrics tracking
@@ -95,11 +95,11 @@ class ComprehensiveTrainer:
         """Create learning rate scheduler."""
         return ExponentialLR(self.optimizer, gamma=0.97)
     
-    def _create_criterion(self) -> nn.Module:
+    def _create_criterion(self, y_train: Optional[np.ndarray] = None) -> nn.Module:
         """Create loss criterion."""
-        if hasattr(self.config, 'use_class_weights') and self.config.use_class_weights:
+        if hasattr(self.config, 'use_class_weights') and self.config.use_class_weights and y_train is not None:
             # Always use class weights for sMRI as it's critical for performance
-            class_weights = calculate_class_weights(self.config.y_train, self.device)
+            class_weights = calculate_class_weights(y_train, self.device)
             return nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
         
         if hasattr(self.config, 'label_smoothing') and self.config.label_smoothing > 0:
@@ -121,6 +121,10 @@ class ComprehensiveTrainer:
         
         Returns detailed training history for scientific analysis.
         """
+        
+        # Create criterion with training data if not already created
+        if self.criterion is None:
+            self.criterion = self._create_criterion(y_train)
         
         logger.info(f"🚀 Starting training: {self.experiment_name}")
         logger.info(f"   📊 Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")

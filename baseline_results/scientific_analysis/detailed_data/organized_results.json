@@ -1,0 +1,14 @@
+{
+  "experiments": {},
+  "cv_types": [
+    "standard_cv",
+    "leave_site_out_cv"
+  ],
+  "metrics": [
+    "accuracy",
+    "balanced_accuracy",
+    "auc"
+  ],
+  "modalities": [],
+  "types": []
+}

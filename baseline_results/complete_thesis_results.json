@@ -1,0 +1,69 @@
+{
+  "metadata": {
+    "total_experiments": 2,
+    "successful_experiments": 0,
+    "failed_experiments": 2,
+    "total_runtime_minutes": 2.953608830769857e-05,
+    "timestamp": "2025-06-10T22:13:00.335601",
+    "included_leave_site_out": true,
+    "python_version": "3.10.12",
+    "torch_version": "2.7.0+cpu",
+    "device_used": "cpu",
+    "config_summary": {
+      "base_config": "CrossAttentionConfig",
+      "data_paths": {
+        "fmri_path": "default_fmri_path",
+        "smri_path": "default_smri_path",
+        "phenotypic_path": "default_phenotypic_path"
+      }
+    }
+  },
+  "experiments": {
+    "fmri_baseline": {
+      "experiment_name": "fmri_baseline",
+      "name": "fMRI Baseline",
+      "description": "fMRI-only Transformer baseline",
+      "type": "baseline",
+      "modality": "fmri",
+      "timestamp": "2025-06-10T22:12:58.917541",
+      "error": "[Errno 13] Permission denied: '/content'"
+    },
+    "smri_baseline": {
+      "experiment_name": "smri_baseline",
+      "name": "sMRI Enhanced Baseline",
+      "description": "Enhanced sMRI Transformer baseline with improved architecture",
+      "type": "baseline",
+      "modality": "smri",
+      "timestamp": "2025-06-10T22:12:58.918422",
+      "error": "[Errno 13] Permission denied: '/content'"
+    }
+  },
+  "scientific_analysis": {
+    "summary_statistics": {
+      "overall_summary": {},
+      "by_modality": {},
+      "performance_ranking": []
+    },
+    "statistical_tests": {
+      "pairwise_comparisons": {},
+      "modality_comparisons": {},
+      "cv_type_comparisons": {},
+      "normality_tests": {},
+      "effect_sizes": {}
+    },
+    "visualizations": {
+      "performance_plots": "baseline_results/scientific_analysis/plots/performance_comparison.png"
+    },
+    "detailed_analysis": {},
+    "recommendations": {
+      "best_performing_models": [],
+      "statistical_insights": [
+        "Cross-validation provides robust performance estimates",
+        "Leave-site-out validation tests generalization across sites",
+        "Standard deviation indicates model stability"
+      ],
+      "methodological_recommendations": [],
+      "future_work_suggestions": []
+    }
+  }
+}
