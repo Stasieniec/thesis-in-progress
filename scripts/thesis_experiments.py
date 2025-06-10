@@ -27,6 +27,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import accuracy_score, roc_auc_score, balanced_accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+from copy import deepcopy
 
 # Add src to path for imports
 script_dir = Path(__file__).parent
@@ -1946,23 +1947,16 @@ class ThesisExperiments:
         # Create temporary checkpoint path for this fold
         checkpoint_path = output_dir / f'temp_fold_{fold_idx}_model.pth'
         
-        # **CRITICAL FIX**: Train with proper validation
+        # **CRITICAL FIX**: Train with proper validation - no checkpoint saving
         history = trainer.fit(
             train_loader, val_loader,  # Proper train/val split
             num_epochs=num_epochs,
-            checkpoint_path=checkpoint_path,  # Use temporary checkpoint path
+            checkpoint_path=None,  # No model saving
             y_train=y_train
         )
         
         # Evaluate on test set
         test_metrics = trainer.evaluate_final(test_loader)
-        
-        # Clean up temporary checkpoint file
-        try:
-            if checkpoint_path.exists():
-                checkpoint_path.unlink()
-        except Exception:
-            pass  # Ignore cleanup errors
         
         return {
             'fold': fold_idx,
@@ -2212,9 +2206,9 @@ class ThesisExperiments:
                 'config_summary': {
                     'base_config': self.config.__class__.__name__,
                     'data_paths': {
-                        'fmri_path': str(self.config.fmri_path),
-                        'smri_path': str(self.config.smri_path),
-                        'phenotypic_path': str(self.config.phenotypic_path)
+                        'fmri_path': str(getattr(self.config, 'fmri_path', 'default_fmri_path')),
+                        'smri_path': str(getattr(self.config, 'smri_path', 'default_smri_path')),
+                        'phenotypic_path': str(getattr(self.config, 'phenotypic_path', 'default_phenotypic_path'))
                     }
                 }
             },
