@@ -74,7 +74,24 @@ def final_smri_push(num_folds: int = 5, device: str = 'auto'):
     
     # Focused configurations around High_LR_Enhanced winner
     final_configs = [
-        # 1. Original High_LR_Enhanced with more epochs
+        # 1. Better regularization + more epochs (BEST CHANCE FOR 58%+)
+        {
+            'name': 'High_LR_Stable',
+            'd_model': 192,
+            'n_heads': 8,
+            'n_layers': 3,
+            'dropout': 0.15,        # Increased from 0.1
+            'layer_dropout': 0.08,  # Increased from 0.05
+            'learning_rate': 0.002,
+            'batch_size': 64,
+            'weight_decay': 2e-4,   # Increased from 1e-4
+            'num_epochs': 120,      # More epochs
+            'patience': 35,         # More patience
+            'use_feature_engineering': True,
+            'use_positional_encoding': False
+        },
+        
+        # 2. Original High_LR_Enhanced with more epochs
         {
             'name': 'High_LR_Extended',
             'd_model': 192,
@@ -90,50 +107,34 @@ def final_smri_push(num_folds: int = 5, device: str = 'auto'):
             'use_positional_encoding': False
         },
         
-        # 2. Even higher learning rate
+        # 3. Sweet spot learning rate (between 0.002 and 0.003)
         {
-            'name': 'Ultra_High_LR',
+            'name': 'High_LR_Sweet_Spot',
             'd_model': 192,
             'n_heads': 8,
             'n_layers': 3,
-            'dropout': 0.1,
-            'layer_dropout': 0.05,
-            'learning_rate': 0.003,
+            'dropout': 0.12,        # Moderate increase
+            'layer_dropout': 0.06,
+            'learning_rate': 0.0025, # Sweet spot between 0.002 and 0.003
             'batch_size': 64,
-            'weight_decay': 1e-4,
-            'num_epochs': 80,
+            'weight_decay': 1.5e-4,
+            'num_epochs': 100,
             'use_feature_engineering': True,
             'use_positional_encoding': False
         },
         
-        # 3. High LR with larger model
+        # 4. Even higher learning rate with more regularization
         {
-            'name': 'High_LR_Large',
-            'd_model': 256,
-            'n_heads': 8,
-            'n_layers': 4,
-            'dropout': 0.1,
-            'layer_dropout': 0.05,
-            'learning_rate': 0.002,
-            'batch_size': 48,
-            'weight_decay': 1e-4,
-            'num_epochs': 100,
-            'use_feature_engineering': True,
-            'use_positional_encoding': True
-        },
-        
-        # 4. High LR with less regularization
-        {
-            'name': 'High_LR_Low_Reg',
+            'name': 'Ultra_High_LR_Stable',
             'd_model': 192,
             'n_heads': 8,
             'n_layers': 3,
-            'dropout': 0.05,
-            'layer_dropout': 0.02,
-            'learning_rate': 0.002,
+            'dropout': 0.18,        # Higher dropout for higher LR
+            'layer_dropout': 0.1,
+            'learning_rate': 0.003,
             'batch_size': 64,
-            'weight_decay': 5e-5,
-            'num_epochs': 80,
+            'weight_decay': 2.5e-4, # More weight decay
+            'num_epochs': 90,
             'use_feature_engineering': True,
             'use_positional_encoding': False
         }
@@ -233,7 +234,7 @@ def test_final_config(smri_data, labels, config, num_folds, device):
         temp_config.weight_decay = config['weight_decay']
         temp_config.batch_size = config['batch_size']
         temp_config.num_epochs = config['num_epochs']
-        temp_config.early_stop_patience = 25
+        temp_config.early_stop_patience = config.get('patience', 25)  # Use config patience or default
         temp_config.use_class_weights = True
         temp_config.label_smoothing = 0.1
         temp_config.output_dir = Path('./temp_final_push')
