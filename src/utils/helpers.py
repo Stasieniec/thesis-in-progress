@@ -64,7 +64,7 @@ def run_cross_validation(
     set_seed(config.seed)
     
     # Get device
-    device = get_device(config.device)
+    device = get_device(getattr(config, 'device', 'auto'))
     
     # Initialize cross-validation
     kfold = StratifiedKFold(n_splits=config.num_folds, shuffle=True, random_state=config.seed)
@@ -171,7 +171,7 @@ def _run_single_fold(
             n_layers=config.num_layers,
             dropout=config.dropout,
             layer_dropout=config.layer_dropout
-        )
+        ).to(device)  # **CRITICAL FIX**: Move model to device
     else:
         # fMRI model - has dim_feedforward attribute unique to FMRIConfig
         model = model_class(
@@ -181,7 +181,7 @@ def _run_single_fold(
             num_layers=config.num_layers,
             num_heads=config.num_heads,
             dropout=config.dropout
-        )
+        ).to(device)  # **CRITICAL FIX**: Move model to device
     
     # Initialize trainer
     trainer = Trainer(model, device, config, model_type='single')
@@ -298,7 +298,7 @@ def _run_multimodal_fold(
         if 'temperature' in sig.parameters:
             model_kwargs['temperature'] = getattr(config, 'temperature', 0.1)
             
-        model = model_class(**model_kwargs)
+        model = model_class(**model_kwargs).to(device)  # **CRITICAL FIX**: Move model to device
     else:
         # Original models with legacy parameter names
         model = model_class(
@@ -309,7 +309,7 @@ def _run_multimodal_fold(
             n_layers=config.num_layers,
             n_cross_layers=config.num_cross_layers,
             dropout=config.dropout
-        )
+        ).to(device)  # **CRITICAL FIX**: Move model to device
     
     # Initialize trainer
     trainer = Trainer(model, device, config, model_type='multimodal')
