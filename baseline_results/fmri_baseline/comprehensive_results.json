@@ -1,9 +1,0 @@
-{
-  "experiment_name": "fmri_baseline",
-  "name": "fMRI Baseline",
-  "description": "fMRI-only Transformer baseline",
-  "type": "baseline",
-  "modality": "fmri",
-  "timestamp": "2025-06-10T22:12:58.917541",
-  "error": "[Errno 13] Permission denied: '/content'"
-}

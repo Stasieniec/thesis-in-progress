@@ -1,3 +1,0 @@
-experiment,name,type,modality,status,error
-fmri_baseline,fMRI Baseline,baseline,fmri,FAILED,[Errno 13] Permission denied: '/content'
-smri_baseline,sMRI Enhanced Baseline,baseline,smri,FAILED,[Errno 13] Permission denied: '/content'

@@ -1,9 +1,0 @@
-{
-  "experiment_name": "smri_baseline",
-  "name": "sMRI Enhanced Baseline",
-  "description": "Enhanced sMRI Transformer baseline with improved architecture",
-  "type": "baseline",
-  "modality": "smri",
-  "timestamp": "2025-06-10T22:12:58.918422",
-  "error": "[Errno 13] Permission denied: '/content'"
-}
