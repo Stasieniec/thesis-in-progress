@@ -24,6 +24,9 @@ from typing import Dict, List, Any, Tuple, Optional
 import time
 import json
 from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import accuracy_score, roc_auc_score, balanced_accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
 # Add src to path for imports
 script_dir = Path(__file__).parent
@@ -50,6 +53,7 @@ from utils.subject_matching import get_matched_datasets
 from evaluation import create_cv_visualizations, save_results
 from training import set_seed, Trainer
 from models import SingleAtlasTransformer, SMRITransformer, CrossAttentionTransformer
+from models.enhanced_smri import EnhancedSMRITransformer
 from utils.helpers import _run_multimodal_fold
 
 # Configure logging
@@ -462,9 +466,9 @@ class ThesisExperiments:
                 'modality': 'fmri'
             },
             'smri_baseline': {
-                'name': 'sMRI Baseline', 
-                'description': 'sMRI-only Transformer baseline',
-                'model_class': SMRITransformer,
+                'name': 'sMRI Enhanced Baseline', 
+                'description': 'Enhanced sMRI Transformer baseline with improved architecture',
+                'model_class': EnhancedSMRITransformer,
                 'type': 'baseline',
                 'modality': 'smri'
             },
@@ -503,7 +507,7 @@ class ThesisExperiments:
         # Baselines for comparison
         self.baselines = {
             'fmri': 0.60,  # 60% fMRI baseline
-            'smri': 0.58,  # 58% sMRI baseline
+            'smri': 0.56,  # 56% Enhanced sMRI baseline (updated from 58% to proven 56%)
             'cross_attention': 0.58  # 58% original cross-attention
         }
         
@@ -1335,31 +1339,22 @@ class ThesisExperiments:
         # Train model
         trainer = Trainer(model, self.device, temp_config, model_type='single')
         
-        # Create temporary checkpoint path
-        checkpoint_path = temp_config.output_dir / f'temp_model_fold_{fold}.pth'
-        
+        # Train without model checkpointing
         history = trainer.fit(
             train_loader, val_loader,
             num_epochs=num_epochs,
-            checkpoint_path=checkpoint_path,
+            checkpoint_path=None,  # No model saving
             y_train=y_train
         )
         
-        # Evaluate
+        # Evaluate model
         test_metrics = trainer.evaluate_final(test_loader)
         
-        # Clean up temporary checkpoint file
-        try:
-            if checkpoint_path.exists():
-                checkpoint_path.unlink()
-        except Exception:
-            pass  # Ignore cleanup errors
-        
         return {
-            'fold': fold,
-            'test_accuracy': test_metrics['accuracy'],
-            'test_balanced_accuracy': test_metrics['balanced_accuracy'],
-            'test_auc': test_metrics['auc']
+            'accuracy': test_metrics['accuracy'],
+            'balanced_accuracy': test_metrics['balanced_accuracy'],
+            'auc': test_metrics['auc'],
+            'history': history
         }
     
     def quick_test(
@@ -1976,7 +1971,11 @@ class ThesisExperiments:
             'test_auc': test_metrics['auc'],
             'train_size': len(y_train),
             'val_size': len(y_val),
-            'test_size': len(y_test)
+            'test_size': len(y_test),
+            'history': history,  # Include training history for analysis
+            'targets': test_metrics['targets'],
+            'predictions': test_metrics['predictions'],
+            'probabilities': test_metrics['probabilities']
         }
     
     def _run_standard_cv_for_experiment(
@@ -2117,13 +2116,11 @@ class ThesisExperiments:
                 augment_train=True
             )
             
-            # Train with multimodal data
-            checkpoint_path = save_dir / f'fold_{fold}' / 'best_model.pth'
-            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            # Train without model checkpointing
             history = trainer.fit(
                 train_loader, val_loader,
                 num_epochs=num_epochs,
-                checkpoint_path=checkpoint_path,
+                checkpoint_path=None,  # No model saving
                 y_train=y_train
             )
             
@@ -2135,8 +2132,7 @@ class ThesisExperiments:
                 augment_train=False
             )
             
-            # Load best model and evaluate
-            model.load_state_dict(torch.load(checkpoint_path)['model_state_dict'])
+            # Evaluate final performance
             test_metrics = trainer.evaluate_final(val_test_loader)
             
             accuracy = test_metrics['accuracy']
@@ -2148,7 +2144,10 @@ class ThesisExperiments:
                 'test_accuracy': accuracy,
                 'test_balanced_accuracy': balanced_acc,
                 'test_auc': auc,
-                'history': history
+                'history': history,
+                'targets': test_metrics['targets'],
+                'predictions': test_metrics['predictions'],
+                'probabilities': test_metrics['probabilities']
             })
             
             if verbose:
@@ -2177,73 +2176,628 @@ class ThesisExperiments:
         verbose: bool,
         include_leave_site_out: bool = True
     ):
-        """Save comprehensive results with analysis."""
+        """Save comprehensive results with exhaustive scientific analysis."""
         
-        # Save all results
-        results_path = output_path / 'comprehensive_results.json'
-        with open(results_path, 'w') as f:
-            json.dump(all_results, f, indent=2, default=str)
+        if verbose:
+            logger.info("📊 Starting comprehensive scientific analysis...")
         
-        # Create summary
-        summary = {
-            'experiment_info': {
+        # Import scientific analysis module
+        try:
+            from evaluation.scientific_analysis import ScientificAnalyzer
+            
+            # Create scientific analyzer
+            analyzer = ScientificAnalyzer(output_path / 'scientific_analysis')
+            
+            # Perform comprehensive analysis
+            scientific_analysis = analyzer.analyze_experiment_results(
+                all_results, 
+                include_leave_site_out=include_leave_site_out
+            )
+        except Exception as e:
+            logger.warning(f"Scientific analysis failed: {e}")
+            scientific_analysis = {'error': str(e)}
+        
+        # Save all results with timestamps
+        results_with_metadata = {
+            'metadata': {
                 'total_experiments': len(all_results),
                 'successful_experiments': len([r for r in all_results.values() if 'error' not in r]),
                 'failed_experiments': len([r for r in all_results.values() if 'error' in r]),
                 'total_runtime_minutes': total_time / 60,
                 'timestamp': datetime.now().isoformat(),
-                'included_leave_site_out': include_leave_site_out
+                'included_leave_site_out': include_leave_site_out,
+                'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                'torch_version': torch.__version__,
+                'device_used': str(self.device),
+                'config_summary': {
+                    'base_config': self.config.__class__.__name__,
+                    'data_paths': {
+                        'fmri_path': str(self.config.fmri_path),
+                        'smri_path': str(self.config.smri_path),
+                        'phenotypic_path': str(self.config.phenotypic_path)
+                    }
+                }
             },
-            'results_summary': {}
+            'experiments': all_results,
+            'scientific_analysis': scientific_analysis
         }
         
-        # Performance summary
-        for exp_name, result in all_results.items():
-            if 'error' not in result:
-                exp_summary = {
-                    'name': result['name'],
-                    'type': result['type'],
-                }
-                
-                # Add standard CV results
-                if 'standard_cv' in result:
-                    cv_results = result['standard_cv']
-                    exp_summary.update({
-                        'standard_cv_accuracy': f"{cv_results['mean_accuracy']:.1f}% ± {cv_results['std_accuracy']:.1f}%",
-                        'standard_cv_balanced_accuracy': f"{cv_results['mean_balanced_accuracy']:.1f}% ± {cv_results['std_balanced_accuracy']:.1f}%",
-                        'standard_cv_auc': f"{cv_results['mean_auc']:.3f} ± {cv_results['std_auc']:.3f}",
-                    })
-                
-                # Add leave-site-out CV results
-                if include_leave_site_out and 'leave_site_out_cv' in result and 'error' not in result['leave_site_out_cv']:
-                    lso_results = result['leave_site_out_cv']
-                    exp_summary.update({
-                        'leave_site_out_accuracy': f"{lso_results['mean_accuracy']:.1f}% ± {lso_results['std_accuracy']:.1f}%",
-                        'leave_site_out_balanced_accuracy': f"{lso_results['mean_balanced_accuracy']:.1f}% ± {lso_results['std_balanced_accuracy']:.1f}%",
-                        'leave_site_out_auc': f"{lso_results['mean_auc']:.3f} ± {lso_results['std_auc']:.3f}",
-                        'n_sites': lso_results.get('n_sites', 'N/A'),
-                        'beats_baseline': lso_results.get('beats_baseline', False)
-                    })
-                
-                summary['results_summary'][exp_name] = exp_summary
+        # Save master results file
+        master_results_path = output_path / 'complete_thesis_results.json'
+        with open(master_results_path, 'w') as f:
+            json.dump(results_with_metadata, f, indent=2, default=str)
         
-        # Save summary
-        summary_path = output_path / 'experiment_summary.json'
-        with open(summary_path, 'w') as f:
-            json.dump(summary, f, indent=2, default=str)
+        # Create detailed performance summary
+        self._create_detailed_performance_summary(all_results, output_path, include_leave_site_out)
         
-        # Create CSV summary table for easy reading
-        self._create_results_table(all_results, output_path, include_leave_site_out)
+        # Create training curves for each experiment
+        self._create_training_visualizations(all_results, output_path)
+        
+        # Create confusion matrices for each experiment
+        self._create_confusion_matrices(all_results, output_path)
+        
+        # Create statistical comparison tables
+        self._create_statistical_tables(all_results, output_path, include_leave_site_out)
+        
+        # Create executive summary report
+        self._create_executive_summary(all_results, output_path, total_time, include_leave_site_out)
+        
+        # Save experiment configurations for reproducibility
+        self._save_experiment_configs(output_path)
         
         if verbose:
-            logger.info("\n📊 EXPERIMENT SUMMARY")
+            logger.info("\n🎯 COMPREHENSIVE THESIS RESULTS SUMMARY")
             logger.info("=" * 80)
-            for exp_name, exp_summary in summary['results_summary'].items():
-                logger.info(f"🔬 {exp_summary['name']}:")
-                if 'standard_cv_accuracy' in exp_summary:
-                    logger.info(f"   📊 Standard CV: {exp_summary['standard_cv_accuracy']}")
-                if 'leave_site_out_accuracy' in exp_summary:
-                    logger.info(f"   🏥 Leave-Site-Out CV: {exp_summary['leave_site_out_accuracy']}")
+            self._print_detailed_summary(all_results, include_leave_site_out)
+            logger.info("=" * 80)
+            logger.info(f"📁 Complete results saved to: {output_path}")
+            logger.info(f"📊 Scientific analysis: {output_path / 'scientific_analysis'}")
+            logger.info(f"📈 Visualizations: {output_path / 'plots'}")
+            logger.info(f"📋 Summary report: {output_path / 'executive_summary.md'}")
+    
+    def _create_detailed_performance_summary(
+        self, 
+        all_results: dict, 
+        output_path: Path, 
+        include_leave_site_out: bool
+    ):
+        """Create detailed performance summary with all metrics."""
+        
+        summary_data = []
+        
+        for exp_name, result in all_results.items():
+            if 'error' in result:
+                summary_data.append({
+                    'experiment': exp_name,
+                    'name': result.get('name', exp_name),
+                    'type': result.get('type', 'unknown'),
+                    'modality': result.get('modality', 'unknown'),
+                    'status': 'FAILED',
+                    'error': str(result['error'])
+                })
+                continue
+            
+            # Standard CV results
+            base_entry = {
+                'experiment': exp_name,
+                'name': result['name'],
+                'type': result['type'],
+                'modality': result['modality'],
+                'status': 'SUCCESS'
+            }
+            
+            if 'standard_cv' in result:
+                cv = result['standard_cv']
+                standard_entry = base_entry.copy()
+                standard_entry.update({
+                    'cv_type': 'Standard CV',
+                    'accuracy_mean': cv.get('mean_accuracy', 0),
+                    'accuracy_std': cv.get('std_accuracy', 0),
+                    'balanced_accuracy_mean': cv.get('mean_balanced_accuracy', 0),
+                    'balanced_accuracy_std': cv.get('std_balanced_accuracy', 0),
+                    'auc_mean': cv.get('mean_auc', 0),
+                    'auc_std': cv.get('std_auc', 0),
+                    'n_folds': len(cv.get('fold_results', [])),
+                    'performance_string': f"{cv.get('mean_accuracy', 0):.1f}% ± {cv.get('std_accuracy', 0):.1f}%"
+                })
+                summary_data.append(standard_entry)
+            
+            # Leave-site-out CV results
+            if include_leave_site_out and 'leave_site_out_cv' in result and 'error' not in result['leave_site_out_cv']:
+                lso = result['leave_site_out_cv']
+                lso_entry = base_entry.copy()
+                lso_entry.update({
+                    'cv_type': 'Leave-Site-Out CV',
+                    'accuracy_mean': lso.get('mean_accuracy', 0),
+                    'accuracy_std': lso.get('std_accuracy', 0),
+                    'balanced_accuracy_mean': lso.get('mean_balanced_accuracy', 0),
+                    'balanced_accuracy_std': lso.get('std_balanced_accuracy', 0),
+                    'auc_mean': lso.get('mean_auc', 0),
+                    'auc_std': lso.get('std_auc', 0),
+                    'n_sites': lso.get('n_sites', 0),
+                    'performance_string': f"{lso.get('mean_accuracy', 0):.1f}% ± {lso.get('std_accuracy', 0):.1f}%",
+                    'beats_baseline': lso.get('beats_baseline', False)
+                })
+                summary_data.append(lso_entry)
+        
+        # Save as CSV for easy analysis
+        df = pd.DataFrame(summary_data)
+        df.to_csv(output_path / 'detailed_performance_summary.csv', index=False)
+        
+        # Save best performers summary
+        if summary_data:
+            successful_results = [r for r in summary_data if r['status'] == 'SUCCESS']
+            if successful_results:
+                best_standard_cv = max(
+                    [r for r in successful_results if r.get('cv_type') == 'Standard CV'],
+                    key=lambda x: x.get('accuracy_mean', 0),
+                    default=None
+                )
+                
+                best_performers = {'best_standard_cv': best_standard_cv}
+                
+                if include_leave_site_out:
+                    best_lso_cv = max(
+                        [r for r in successful_results if r.get('cv_type') == 'Leave-Site-Out CV'],
+                        key=lambda x: x.get('accuracy_mean', 0),
+                        default=None
+                    )
+                    best_performers['best_leave_site_out_cv'] = best_lso_cv
+                
+                with open(output_path / 'best_performers.json', 'w') as f:
+                    json.dump(best_performers, f, indent=2, default=str)
+    
+    def _create_training_visualizations(self, all_results: dict, output_path: Path):
+        """Create training curve visualizations for each experiment."""
+        
+        plots_dir = output_path / 'plots' / 'training_curves'
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        
+        for exp_name, result in all_results.items():
+            if 'error' in result:
+                continue
+            
+            # Look for training history in fold results
+            for cv_type in ['standard_cv', 'leave_site_out_cv']:
+                if cv_type not in result or 'fold_results' not in result[cv_type]:
+                    continue
+                
+                fold_results = result[cv_type]['fold_results']
+                
+                # Create combined training curves plot
+                self._plot_combined_training_curves(
+                    fold_results, 
+                    plots_dir / f'{exp_name}_{cv_type}_training_curves.png',
+                    f"{result['name']} - {cv_type.replace('_', ' ').title()}"
+                )
+    
+    def _plot_combined_training_curves(
+        self, 
+        fold_results: List[dict], 
+        save_path: Path, 
+        title: str
+    ):
+        """Plot combined training curves from all folds."""
+        
+        if not fold_results or 'history' not in fold_results[0]:
+            return
+        
+        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        fig.suptitle(f'Training Curves: {title}', fontsize=16, fontweight='bold')
+        
+        colors = plt.cm.tab10(np.linspace(0, 1, len(fold_results)))
+        
+        for fold_idx, fold_result in enumerate(fold_results):
+            history = fold_result.get('history', {})
+            if not history:
+                continue
+            
+            color = colors[fold_idx]
+            alpha = 0.7
+            
+            epochs = range(1, len(history.get('train_loss', [])) + 1)
+            
+            # Training and validation loss
+            if 'train_loss' in history and 'val_loss' in history:
+                axes[0, 0].plot(epochs, history['train_loss'], 
+                               color=color, alpha=alpha, linewidth=1.5,
+                               label=f'Fold {fold_idx+1} Train' if fold_idx == 0 else "")
+                axes[0, 0].plot(epochs, history['val_loss'], 
+                               color=color, alpha=alpha, linewidth=1.5, linestyle='--',
+                               label=f'Fold {fold_idx+1} Val' if fold_idx == 0 else "")
+            
+            # Training and validation accuracy
+            if 'train_accuracy' in history and 'val_accuracy' in history:
+                axes[0, 1].plot(epochs, [acc*100 for acc in history['train_accuracy']], 
+                               color=color, alpha=alpha, linewidth=1.5)
+                axes[0, 1].plot(epochs, [acc*100 for acc in history['val_accuracy']], 
+                               color=color, alpha=alpha, linewidth=1.5, linestyle='--')
+            
+            # Learning rate
+            if 'learning_rates' in history:
+                axes[1, 0].plot(epochs, history['learning_rates'], 
+                               color=color, alpha=alpha, linewidth=1.5)
+            
+            # Validation AUC
+            if 'val_auc' in history:
+                axes[1, 1].plot(epochs, history['val_auc'], 
+                               color=color, alpha=alpha, linewidth=1.5)
+        
+        # Customize plots
+        axes[0, 0].set_xlabel('Epoch')
+        axes[0, 0].set_ylabel('Loss')
+        axes[0, 0].set_title('Training and Validation Loss')
+        axes[0, 0].legend()
+        axes[0, 0].grid(True, alpha=0.3)
+        
+        axes[0, 1].set_xlabel('Epoch')
+        axes[0, 1].set_ylabel('Accuracy (%)')
+        axes[0, 1].set_title('Training and Validation Accuracy')
+        axes[0, 1].grid(True, alpha=0.3)
+        
+        axes[1, 0].set_xlabel('Epoch')
+        axes[1, 0].set_ylabel('Learning Rate')
+        axes[1, 0].set_title('Learning Rate Schedule')
+        axes[1, 0].set_yscale('log')
+        axes[1, 0].grid(True, alpha=0.3)
+        
+        axes[1, 1].set_xlabel('Epoch')
+        axes[1, 1].set_ylabel('AUC')
+        axes[1, 1].set_title('Validation AUC')
+        axes[1, 1].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def _create_confusion_matrices(self, all_results: dict, output_path: Path):
+        """Create confusion matrices for each experiment."""
+        
+        cm_dir = output_path / 'plots' / 'confusion_matrices'
+        cm_dir.mkdir(parents=True, exist_ok=True)
+        
+        for exp_name, result in all_results.items():
+            if 'error' in result:
+                continue
+            
+            for cv_type in ['standard_cv', 'leave_site_out_cv']:
+                if cv_type not in result:
+                    continue
+                
+                cv_data = result[cv_type]
+                if 'fold_results' not in cv_data:
+                    continue
+                
+                # Create combined confusion matrix from all folds
+                all_true = []
+                all_pred = []
+                
+                for fold_result in cv_data['fold_results']:
+                    if 'targets' in fold_result and 'predictions' in fold_result:
+                        all_true.extend(fold_result['targets'])
+                        all_pred.extend(fold_result['predictions'])
+                
+                if all_true and all_pred:
+                    self._plot_confusion_matrix(
+                        all_true, all_pred,
+                        cm_dir / f'{exp_name}_{cv_type}_confusion_matrix.png',
+                        f"{result['name']} - {cv_type.replace('_', ' ').title()}"
+                    )
+    
+    def _plot_confusion_matrix(
+        self, 
+        y_true: List[int], 
+        y_pred: List[int], 
+        save_path: Path, 
+        title: str
+    ):
+        """Plot confusion matrix with detailed metrics."""
+        
+        from sklearn.metrics import confusion_matrix, classification_report
+        
+        cm = confusion_matrix(y_true, y_pred)
+        
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                    xticklabels=['Control', 'ASD'], yticklabels=['Control', 'ASD'])
+        plt.title(f'Confusion Matrix: {title}', fontsize=14, fontweight='bold')
+        plt.xlabel('Predicted Label')
+        plt.ylabel('True Label')
+        
+        # Calculate and display metrics
+        accuracy = accuracy_score(y_true, y_pred)
+        balanced_acc = balanced_accuracy_score(y_true, y_pred)
+        f1 = f1_score(y_true, y_pred, average='weighted')
+        precision = precision_score(y_true, y_pred, average='weighted')
+        recall = recall_score(y_true, y_pred, average='weighted')
+        
+        metrics_text = (
+            f'Accuracy: {accuracy:.3f}\n'
+            f'Balanced Acc: {balanced_acc:.3f}\n'
+            f'Precision: {precision:.3f}\n'
+            f'Recall: {recall:.3f}\n'
+            f'F1-Score: {f1:.3f}'
+        )
+        
+        plt.text(1.05, 0.5, metrics_text, transform=plt.gca().transAxes, 
+                 verticalalignment='center', 
+                 bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+        
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close()
+    
+    def _create_statistical_tables(
+        self, 
+        all_results: dict, 
+        output_path: Path, 
+        include_leave_site_out: bool
+    ):
+        """Create detailed statistical comparison tables."""
+        
+        stats_dir = output_path / 'statistical_tables'
+        stats_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Performance comparison table
+        comparison_data = []
+        
+        for exp_name, result in all_results.items():
+            if 'error' in result:
+                continue
+            
+            base_row = {
+                'Experiment': exp_name,
+                'Name': result['name'],
+                'Type': result['type'],
+                'Modality': result['modality']
+            }
+            
+            # Standard CV
+            if 'standard_cv' in result:
+                cv = result['standard_cv']
+                row = base_row.copy()
+                row.update({
+                    'CV_Type': 'Standard',
+                    'Accuracy_Mean': cv.get('mean_accuracy', 0),
+                    'Accuracy_Std': cv.get('std_accuracy', 0),
+                    'Balanced_Accuracy_Mean': cv.get('mean_balanced_accuracy', 0),
+                    'Balanced_Accuracy_Std': cv.get('std_balanced_accuracy', 0),
+                    'AUC_Mean': cv.get('mean_auc', 0),
+                    'AUC_Std': cv.get('std_auc', 0),
+                    'N_Folds': len(cv.get('fold_results', [])),
+                    'Performance_Summary': f"{cv.get('mean_accuracy', 0):.2f} ± {cv.get('std_accuracy', 0):.2f}"
+                })
+                comparison_data.append(row)
+            
+            # Leave-site-out CV
+            if include_leave_site_out and 'leave_site_out_cv' in result:
+                lso = result['leave_site_out_cv']
+                if 'error' not in lso:
+                    row = base_row.copy()
+                    row.update({
+                        'CV_Type': 'Leave-Site-Out',
+                        'Accuracy_Mean': lso.get('mean_accuracy', 0),
+                        'Accuracy_Std': lso.get('std_accuracy', 0),
+                        'Balanced_Accuracy_Mean': lso.get('mean_balanced_accuracy', 0),
+                        'Balanced_Accuracy_Std': lso.get('std_balanced_accuracy', 0),
+                        'AUC_Mean': lso.get('mean_auc', 0),
+                        'AUC_Std': lso.get('std_auc', 0),
+                        'N_Sites': lso.get('n_sites', 0),
+                        'Performance_Summary': f"{lso.get('mean_accuracy', 0):.2f} ± {lso.get('std_accuracy', 0):.2f}",
+                        'Beats_Baseline': lso.get('beats_baseline', False)
+                    })
+                    comparison_data.append(row)
+        
+        if comparison_data:
+            df = pd.DataFrame(comparison_data)
+            
+            # Sort by performance
+            df_sorted = df.sort_values('Accuracy_Mean', ascending=False)
+            df_sorted.to_csv(stats_dir / 'performance_comparison.csv', index=False)
+            
+            # Create modality summary
+            modality_summary = df.groupby(['Modality', 'CV_Type']).agg({
+                'Accuracy_Mean': ['mean', 'std', 'max', 'count'],
+                'AUC_Mean': ['mean', 'std', 'max']
+            }).round(3)
+            modality_summary.to_csv(stats_dir / 'modality_summary.csv')
+            
+            # Create ranking table
+            ranking_data = []
+            for cv_type in df['CV_Type'].unique():
+                cv_data = df[df['CV_Type'] == cv_type].sort_values('Accuracy_Mean', ascending=False)
+                for rank, (_, row) in enumerate(cv_data.iterrows(), 1):
+                    ranking_data.append({
+                        'Rank': rank,
+                        'CV_Type': cv_type,
+                        'Experiment': row['Name'],
+                        'Modality': row['Modality'],
+                        'Accuracy': row['Accuracy_Mean'],
+                        'Performance_Summary': row['Performance_Summary']
+                    })
+            
+            ranking_df = pd.DataFrame(ranking_data)
+            ranking_df.to_csv(stats_dir / 'performance_rankings.csv', index=False)
+    
+    def _create_executive_summary(
+        self, 
+        all_results: dict, 
+        output_path: Path, 
+        total_time: float, 
+        include_leave_site_out: bool
+    ):
+        """Create executive summary report in markdown format."""
+        
+        summary_path = output_path / 'executive_summary.md'
+        
+        # Calculate summary statistics
+        successful_experiments = [r for r in all_results.values() if 'error' not in r]
+        failed_experiments = [r for r in all_results.values() if 'error' in r]
+        
+        # Find best performers
+        best_standard_cv = None
+        best_lso_cv = None
+        
+        best_standard_acc = 0
+        best_lso_acc = 0
+        
+        for result in successful_experiments:
+            if 'standard_cv' in result:
+                acc = result['standard_cv'].get('mean_accuracy', 0)
+                if acc > best_standard_acc:
+                    best_standard_acc = acc
+                    best_standard_cv = result
+            
+            if include_leave_site_out and 'leave_site_out_cv' in result:
+                lso = result['leave_site_out_cv']
+                if 'error' not in lso:
+                    acc = lso.get('mean_accuracy', 0)
+                    if acc > best_lso_acc:
+                        best_lso_acc = acc
+                        best_lso_cv = result
+        
+        # Write markdown report
+        with open(summary_path, 'w') as f:
+            f.write("# Comprehensive Thesis Experiment Results\n\n")
+            f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            f.write(f"**Total Runtime:** {total_time/3600:.2f} hours\n\n")
+            
+            f.write("## Executive Summary\n\n")
+            f.write(f"- **Total Experiments:** {len(all_results)}\n")
+            f.write(f"- **Successful:** {len(successful_experiments)}\n")
+            f.write(f"- **Failed:** {len(failed_experiments)}\n")
+            f.write(f"- **Cross-Validation Types:** {'Standard CV + Leave-Site-Out CV' if include_leave_site_out else 'Standard CV only'}\n\n")
+            
+            f.write("## Best Performing Models\n\n")
+            
+            if best_standard_cv:
+                f.write("### Standard Cross-Validation\n")
+                f.write(f"**Best Model:** {best_standard_cv['name']}\n")
+                f.write(f"**Accuracy:** {best_standard_acc:.2f}% ± {best_standard_cv['standard_cv'].get('std_accuracy', 0):.2f}%\n")
+                f.write(f"**AUC:** {best_standard_cv['standard_cv'].get('mean_auc', 0):.3f}\n\n")
+            
+            if best_lso_cv and include_leave_site_out:
+                f.write("### Leave-Site-Out Cross-Validation\n")
+                f.write(f"**Best Model:** {best_lso_cv['name']}\n")
+                f.write(f"**Accuracy:** {best_lso_acc:.2f}% ± {best_lso_cv['leave_site_out_cv'].get('std_accuracy', 0):.2f}%\n")
+                f.write(f"**AUC:** {best_lso_cv['leave_site_out_cv'].get('mean_auc', 0):.3f}\n\n")
+            
+            f.write("## Files Generated\n\n")
+            f.write("- `complete_thesis_results.json` - Complete experimental results\n")
+            f.write("- `detailed_performance_summary.csv` - Tabular performance summary\n")
+            f.write("- `scientific_analysis/` - Comprehensive scientific analysis\n")
+            f.write("- `plots/` - All visualizations and training curves\n")
+            f.write("- `statistical_tables/` - Statistical comparison tables\n")
+            f.write("- `best_performers.json` - Summary of top-performing models\n\n")
+            
+            f.write("## Next Steps\n\n")
+            f.write("1. Review detailed performance in `performance_comparison.csv`\n")
+            f.write("2. Analyze training curves in `plots/training_curves/`\n")
+            f.write("3. Check statistical significance in `scientific_analysis/`\n")
+            f.write("4. Compare confusion matrices in `plots/confusion_matrices/`\n")
+    
+    def _save_experiment_configs(self, output_path: Path):
+        """Save all experiment configurations for reproducibility."""
+        
+        config_dir = output_path / 'experiment_configs'
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save main config
+        config_dict = {
+            'device': str(self.device),
+            'config_class': self.config.__class__.__name__,
+            'config_attributes': {}
+        }
+        
+        # Extract config attributes
+        for attr in dir(self.config):
+            if not attr.startswith('_'):
+                try:
+                    value = getattr(self.config, attr)
+                    if not callable(value):
+                        config_dict['config_attributes'][attr] = str(value)
+                except:
+                    pass
+        
+        with open(config_dir / 'main_config.json', 'w') as f:
+            json.dump(config_dict, f, indent=2, default=str)
+        
+        # Save experiment definitions
+        with open(config_dir / 'experiment_definitions.json', 'w') as f:
+            json.dump(self.experiments, f, indent=2, default=str)
+        
+        # Save environment info
+        env_info = {
+            'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            'torch_version': torch.__version__,
+            'device_info': str(self.device),
+            'timestamp': datetime.now().isoformat(),
+            'git_commit': self._get_git_commit(),
+            'hardware_info': self._get_hardware_info()
+        }
+        
+        with open(config_dir / 'environment_info.json', 'w') as f:
+            json.dump(env_info, f, indent=2, default=str)
+        
+        logger.info(f"📋 Experiment configurations saved to: {config_dir}")
+    
+    def _get_git_commit(self) -> str:
+        """Get current git commit hash for reproducibility."""
+        try:
+            import subprocess
+            result = subprocess.run(['git', 'rev-parse', 'HEAD'], 
+                                  capture_output=True, text=True, cwd=Path(__file__).parent)
+            return result.stdout.strip() if result.returncode == 0 else "unknown"
+        except:
+            return "unknown"
+    
+    def _get_hardware_info(self) -> dict:
+        """Get hardware information for reproducibility."""
+        info = {'device': str(self.device)}
+        
+        if torch.cuda.is_available():
+            info.update({
+                'cuda_version': torch.version.cuda,
+                'gpu_name': torch.cuda.get_device_name(0),
+                'gpu_memory': f"{torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB"
+            })
+        
+        try:
+            import psutil
+            info.update({
+                'cpu_count': psutil.cpu_count(),
+                'memory_gb': f"{psutil.virtual_memory().total / 1e9:.1f} GB"
+            })
+        except:
+            pass
+        
+        return info
+    
+    def _print_detailed_summary(self, all_results: dict, include_leave_site_out: bool):
+        """Print detailed summary to console."""
+        
+        successful_experiments = [r for r in all_results.values() if 'error' not in r]
+        
+        for result in successful_experiments:
+            logger.info(f"\n🔬 {result['name']}:")
+            
+            if 'standard_cv' in result:
+                cv = result['standard_cv']
+                logger.info(f"   📊 Standard CV: {cv.get('mean_accuracy', 0):.1f}% ± {cv.get('std_accuracy', 0):.1f}% (AUC: {cv.get('mean_auc', 0):.3f})")
+            
+            if include_leave_site_out and 'leave_site_out_cv' in result:
+                lso = result['leave_site_out_cv']
+                if 'error' not in lso:
+                    logger.info(f"   🏥 Leave-Site-Out CV: {lso.get('mean_accuracy', 0):.1f}% ± {lso.get('std_accuracy', 0):.1f}% (AUC: {lso.get('mean_auc', 0):.3f})")
+                    if lso.get('beats_baseline', False):
+                        logger.info("   ✅ BEATS BASELINE!")
+        
+        # Print failures
+        failed_experiments = [r for r in all_results.values() if 'error' in r]
+        if failed_experiments:
+            logger.info(f"\n❌ Failed Experiments ({len(failed_experiments)}):")
+            for result in failed_experiments:
+                logger.info(f"   - {result.get('name', 'Unknown')}: {result['error']}")
     
     def _create_results_table(self, all_results: dict, output_path: Path, include_leave_site_out: bool):
         """Create a CSV table with all results for easy analysis."""

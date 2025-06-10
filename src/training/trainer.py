@@ -1,8 +1,13 @@
-"""Advanced trainer for ABIDE experiments."""
+"""
+Comprehensive Training Module with Scientific Metrics Tracking
+===========================================================
+
+Enhanced trainer with exhaustive metric tracking for thesis-level scientific analysis.
+"""
 
 import os
 import warnings
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 from collections import defaultdict
 
@@ -14,312 +19,433 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.amp import GradScaler, autocast
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, roc_auc_score, f1_score
+from sklearn.metrics import precision_score, recall_score, confusion_matrix, classification_report
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+import seaborn as sns
+import json
+import time
 
 from training.utils import EarlyStopping, calculate_class_weights
 
+logger = logging.getLogger(__name__)
 
-class Trainer:
-    """Advanced trainer with mixed precision, gradient clipping, and comprehensive logging."""
 
+class ComprehensiveTrainer:
+    """Enhanced trainer with exhaustive scientific metrics tracking."""
+    
     def __init__(
         self,
         model: nn.Module,
         device: torch.device,
         config: Any,
-        model_type: str = 'single'  # 'single', 'multimodal'
+        model_type: str = 'single',
+        experiment_name: str = "experiment"
     ):
-        """
-        Initialize trainer.
-        
-        Args:
-            model: Model to train
-            device: Device to use for training
-            config: Configuration object
-            model_type: Type of model ('single' or 'multimodal')
-        """
-        self.model = model.to(device)
+        self.model = model
         self.device = device
         self.config = config
         self.model_type = model_type
-
-        # Optimizer (AdamW as recommended)
-        self.optimizer = AdamW(
-            model.parameters(),
-            lr=config.learning_rate,
-            weight_decay=config.weight_decay
-        )
-
-        # Learning rate scheduler
-        self.scheduler = ExponentialLR(self.optimizer, gamma=0.97)
-
-        # Loss function with class weights if needed
-        self.criterion = nn.CrossEntropyLoss()
-
-        # Mixed precision training
-        self.scaler = GradScaler('cuda') if config.use_mixed_precision else None
-
-        # Metrics tracking
-        self.history = defaultdict(list)
-
-    def _setup_class_weights(self, y_train: np.ndarray):
-        """Setup class weights for imbalanced datasets."""
-        # Always use class weights for sMRI as it's critical for performance
-        class_weights = calculate_class_weights(y_train, self.device)
-        self.criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
-        print(f"Using class weights: {class_weights} with label smoothing=0.1")
-
-    def train_epoch(self, train_loader: DataLoader) -> Dict[str, float]:
-        """Train for one epoch."""
-        self.model.train()
-        total_loss = 0
-        correct = 0
-        total = 0
-
-        pbar = tqdm(train_loader, desc='Training', leave=False)
+        self.experiment_name = experiment_name
         
-        for batch_idx, batch_data in enumerate(pbar):
-            # Handle different input formats
-            if self.model_type == 'multimodal':
-                fmri, smri, targets = batch_data
-                fmri = fmri.to(self.device)
-                smri = smri.to(self.device)
-                targets = targets.to(self.device)
-                inputs = (fmri, smri)
-            else:
-                inputs, targets = batch_data
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-
-            # Mixed precision training
-            if self.scaler:
-                with autocast(device_type='cuda'):
-                    if self.model_type == 'multimodal':
-                        outputs = self.model(*inputs)
-                    else:
-                        outputs = self.model(inputs)
-                    loss = self.criterion(outputs, targets)
-
-                # Backward pass with gradient scaling
-                self.optimizer.zero_grad()
-                self.scaler.scale(loss).backward()
-
-                # Gradient clipping
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), 
-                    max_norm=self.config.gradient_clip_norm
-                )
-
-                # Optimizer step
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-            else:
-                # Standard training without mixed precision
-                if self.model_type == 'multimodal':
-                    outputs = self.model(*inputs)
-                else:
-                    outputs = self.model(inputs)
-                loss = self.criterion(outputs, targets)
-
-                self.optimizer.zero_grad()
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(), 
-                    max_norm=self.config.gradient_clip_norm
-                )
-                self.optimizer.step()
-
-            # Metrics
-            total_loss += loss.item()
-            _, predicted = outputs.max(1)
-            total += targets.size(0)
-            correct += predicted.eq(targets).sum().item()
-
-            # Update progress bar
-            pbar.set_postfix({
-                'loss': f"{loss.item():.4f}",
-                'acc': f"{100.*correct/total:.2f}%"
-            })
-
-        return {
-            'loss': total_loss / len(train_loader),
-            'accuracy': correct / total
+        # Initialize optimizers and schedulers
+        self.optimizer = self._create_optimizer()
+        self.scheduler = self._create_scheduler()
+        self.criterion = self._create_criterion()
+        self.scaler = torch.amp.GradScaler('cuda') if device.type == 'cuda' else None
+        
+        # Metrics tracking
+        self.training_history = {
+            'train_loss': [],
+            'val_loss': [],
+            'train_accuracy': [],
+            'val_accuracy': [],
+            'train_balanced_accuracy': [],
+            'val_balanced_accuracy': [],
+            'train_auc': [],
+            'val_auc': [],
+            'train_f1': [],
+            'val_f1': [],
+            'learning_rates': [],
+            'epoch_times': [],
+            'gradient_norms': []
         }
-
-    def validate(self, val_loader: DataLoader) -> Dict[str, float]:
-        """Validate the model."""
-        self.model.eval()
-        total_loss = 0
-        all_preds = []
-        all_targets = []
-        all_probs = []
-
-        with torch.no_grad():
-            for batch_data in tqdm(val_loader, desc='Validation', leave=False):
-                # Handle different input formats
-                if self.model_type == 'multimodal':
-                    fmri, smri, targets = batch_data
-                    fmri = fmri.to(self.device)
-                    smri = smri.to(self.device)
-                    targets = targets.to(self.device)
-                    inputs = (fmri, smri)
-                else:
-                    inputs, targets = batch_data
-                    inputs = inputs.to(self.device)
-                    targets = targets.to(self.device)
-
-                if self.scaler:
-                    with autocast(device_type='cuda'):
-                        if self.model_type == 'multimodal':
-                            outputs = self.model(*inputs)
-                        else:
-                            outputs = self.model(inputs)
-                        loss = self.criterion(outputs, targets)
-                else:
-                    if self.model_type == 'multimodal':
-                        outputs = self.model(*inputs)
-                    else:
-                        outputs = self.model(inputs)
-                    loss = self.criterion(outputs, targets)
-
-                total_loss += loss.item()
-                probs = F.softmax(outputs, dim=1)
-
-                all_probs.append(probs.cpu().numpy())
-                all_preds.append(outputs.argmax(1).cpu().numpy())
-                all_targets.append(targets.cpu().numpy())
-
-        # Concatenate all batches
-        all_preds = np.concatenate(all_preds)
-        all_targets = np.concatenate(all_targets)
-        all_probs = np.concatenate(all_probs)
-
-        # Calculate metrics
-        metrics = {
-            'loss': total_loss / len(val_loader),
-            'accuracy': accuracy_score(all_targets, all_preds),
-            'balanced_accuracy': balanced_accuracy_score(all_targets, all_preds),
-        }
-
-        # Add AUC if binary classification
-        if len(np.unique(all_targets)) == 2:
-            metrics['auc'] = roc_auc_score(all_targets, all_probs[:, 1])
-        else:
-            metrics['auc'] = 0.5
-
-        return metrics
-
+        
+        # Best model tracking
+        self.best_val_accuracy = 0.0
+        self.best_epoch = 0
+        self.early_stop_counter = 0
+        
+        # Scientific analysis data
+        self.fold_analyses = []
+        self.detailed_predictions = {}
+    
+    def _create_optimizer(self) -> AdamW:
+        """Create optimizer with config parameters."""
+        return AdamW(
+            self.model.parameters(),
+            lr=self.config.learning_rate,
+            weight_decay=self.config.weight_decay
+        )
+    
+    def _create_scheduler(self):
+        """Create learning rate scheduler."""
+        return ExponentialLR(self.optimizer, gamma=0.97)
+    
+    def _create_criterion(self) -> nn.Module:
+        """Create loss criterion."""
+        if hasattr(self.config, 'use_class_weights') and self.config.use_class_weights:
+            # Always use class weights for sMRI as it's critical for performance
+            class_weights = calculate_class_weights(self.config.y_train, self.device)
+            return nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
+        
+        if hasattr(self.config, 'label_smoothing') and self.config.label_smoothing > 0:
+            return nn.CrossEntropyLoss(label_smoothing=self.config.label_smoothing)
+        
+        return nn.CrossEntropyLoss()
+    
     def fit(
         self,
         train_loader: DataLoader,
         val_loader: DataLoader,
         num_epochs: int,
-        checkpoint_path: Path,
-        y_train: Optional[np.ndarray] = None
-    ) -> Dict[str, List[float]]:
+        checkpoint_path: Optional[Path] = None,
+        y_train: Optional[np.ndarray] = None,
+        save_detailed_history: bool = True
+    ) -> Dict[str, Any]:
         """
-        Full training loop with early stopping.
+        Comprehensive training with exhaustive metrics tracking.
         
-        Args:
-            train_loader: Training data loader
-            val_loader: Validation data loader
-            num_epochs: Maximum number of epochs
-            checkpoint_path: Path to save best model
-            y_train: Training labels for class weight calculation
+        Returns detailed training history for scientific analysis.
+        """
+        
+        logger.info(f"🚀 Starting training: {self.experiment_name}")
+        logger.info(f"   📊 Train batches: {len(train_loader)}, Val batches: {len(val_loader)}")
+        logger.info(f"   🎯 Target epochs: {num_epochs}")
+        
+        start_time = time.time()
+        
+        for epoch in range(num_epochs):
+            epoch_start_time = time.time()
             
-        Returns:
-            Training history dictionary
-        """
-        # Setup class weights if needed
-        if y_train is not None:
-            self._setup_class_weights(y_train)
-
-        # Early stopping
-        early_stopping = EarlyStopping(
-            patience=self.config.early_stop_patience,
-            mode='min'
-        )
-
-        # Warmup scheduler
-        warmup_scheduler = None
-        if hasattr(self.config, 'warmup_epochs') and self.config.warmup_epochs > 0:
-            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-                self.optimizer,
-                start_factor=0.1,
-                end_factor=1.0,
-                total_iters=self.config.warmup_epochs
-            )
-
-        best_val_acc = 0
-        
-        for epoch in range(1, num_epochs + 1):
-            # Training
-            train_metrics = self.train_epoch(train_loader)
-
-            # Validation
-            val_metrics = self.validate(val_loader)
-
-            # Learning rate scheduling
-            if warmup_scheduler and epoch <= self.config.warmup_epochs:
-                warmup_scheduler.step()
+            # Training phase
+            train_metrics = self._train_epoch(train_loader, epoch)
+            
+            # Validation phase
+            val_metrics = self._validate_epoch(val_loader, epoch)
+            
+            # Update learning rate
+            if isinstance(self.scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                self.scheduler.step(val_metrics['accuracy'])
             else:
                 self.scheduler.step()
-
-            current_lr = self.optimizer.param_groups[0]['lr']
-
-            # Logging
-            if epoch % self.config.log_every == 0 or epoch <= 10:
-                print(f"\nEpoch {epoch}/{num_epochs}")
-                print(f"Train - Loss: {train_metrics['loss']:.4f}, Acc: {train_metrics['accuracy']:.4f}")
-                print(f"Val   - Loss: {val_metrics['loss']:.4f}, Acc: {val_metrics['accuracy']:.4f}, "
-                      f"Balanced Acc: {val_metrics['balanced_accuracy']:.4f}, AUC: {val_metrics['auc']:.4f}")
-                print(f"LR: {current_lr:.6f}")
-
-            # Track history
-            for key, value in train_metrics.items():
-                self.history[f'train_{key}'].append(value)
-            for key, value in val_metrics.items():
-                self.history[f'val_{key}'].append(value)
-            self.history['lr'].append(current_lr)
-
-            # Track best validation accuracy
-            if val_metrics['accuracy'] > best_val_acc:
-                best_val_acc = val_metrics['accuracy']
-
-            # Early stopping
-            early_stopping(val_metrics['loss'], self.model, checkpoint_path)
-            if early_stopping.early_stop:
-                print(f"\n⏹️ Early stopping triggered at epoch {epoch}")
-                print(f"Best validation accuracy: {best_val_acc:.4f}")
+            
+            # Record metrics
+            epoch_time = time.time() - epoch_start_time
+            self._record_epoch_metrics(train_metrics, val_metrics, epoch_time, epoch)
+            
+            # Early stopping (without model checkpointing)
+            if val_metrics['accuracy'] > self.best_val_accuracy:
+                self.best_val_accuracy = val_metrics['accuracy']
+                self.best_epoch = epoch
+                self.early_stop_counter = 0
+            else:
+                self.early_stop_counter += 1
+            
+            # Progress logging
+            if epoch % 10 == 0 or epoch == num_epochs - 1:
+                logger.info(
+                    f"Epoch [{epoch+1}/{num_epochs}] - "
+                    f"Train Acc: {train_metrics['accuracy']:.3f}, "
+                    f"Val Acc: {val_metrics['accuracy']:.3f}, "
+                    f"Best: {self.best_val_accuracy:.3f} (epoch {self.best_epoch+1})"
+                )
+            
+            # Early stopping check
+            patience = getattr(self.config, 'early_stop_patience', 20)
+            if self.early_stop_counter >= patience:
+                logger.info(f"🛑 Early stopping at epoch {epoch+1} (patience: {patience})")
                 break
-
-        # Load best model
-        checkpoint = torch.load(checkpoint_path)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
-
-        return dict(self.history)
-
-    def evaluate_final(self, test_loader: DataLoader) -> Dict[str, float]:
-        """Final evaluation on test set."""
-        return self.validate(test_loader)
-
-    def get_model_summary(self) -> Dict[str, Any]:
-        """Get model summary information."""
-        total_params = sum(p.numel() for p in self.model.parameters())
-        trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         
-        summary = {
-            'total_params': total_params,
-            'trainable_params': trainable_params,
-            'model_size_mb': total_params * 4 / (1024 * 1024),
-            'device': str(self.device),
-            'mixed_precision': self.scaler is not None
+        total_time = time.time() - start_time
+        logger.info(f"✅ Training completed in {total_time:.1f}s")
+        
+        # Finalize training history
+        self.training_history['total_training_time'] = total_time
+        self.training_history['best_epoch'] = self.best_epoch
+        self.training_history['best_val_accuracy'] = self.best_val_accuracy
+        self.training_history['final_lr'] = self.optimizer.param_groups[0]['lr']
+        
+        if save_detailed_history:
+            self._save_training_analysis(checkpoint_path.parent if checkpoint_path else Path('.'))
+        
+        return self.training_history
+    
+    def _train_epoch(self, train_loader: DataLoader, epoch: int) -> Dict[str, float]:
+        """Train for one epoch with comprehensive metrics."""
+        
+        self.model.train()
+        
+        total_loss = 0.0
+        all_predictions = []
+        all_targets = []
+        all_probabilities = []
+        gradient_norms = []
+        
+        for batch_idx, batch in enumerate(train_loader):
+            if self.model_type == 'multimodal':
+                fmri_data, smri_data, targets = batch
+                fmri_data = fmri_data.to(self.device)
+                smri_data = smri_data.to(self.device)
+                targets = targets.to(self.device)
+            else:
+                inputs, targets = batch
+                inputs = inputs.to(self.device)
+                targets = targets.to(self.device)
+            
+            self.optimizer.zero_grad()
+            
+            # Forward pass with mixed precision if available
+            if self.scaler is not None:
+                with torch.amp.autocast(device_type='cuda'):
+                    if self.model_type == 'multimodal':
+                        outputs = self.model(fmri_data, smri_data)
+                    else:
+                        outputs = self.model(inputs)
+                    loss = self.criterion(outputs, targets)
+                
+                self.scaler.scale(loss).backward()
+                
+                # Gradient clipping
+                if hasattr(self.config, 'gradient_clip_norm'):
+                    self.scaler.unscale_(self.optimizer)
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), 
+                        self.config.gradient_clip_norm
+                    )
+                    gradient_norms.append(grad_norm.item())
+                
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                if self.model_type == 'multimodal':
+                    outputs = self.model(fmri_data, smri_data)
+                else:
+                    outputs = self.model(inputs)
+                loss = self.criterion(outputs, targets)
+                
+                loss.backward()
+                
+                # Gradient clipping
+                if hasattr(self.config, 'gradient_clip_norm'):
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), 
+                        self.config.gradient_clip_norm
+                    )
+                    gradient_norms.append(grad_norm.item())
+                
+                self.optimizer.step()
+            
+            # Collect metrics
+            total_loss += loss.item()
+            
+            with torch.no_grad():
+                probabilities = torch.softmax(outputs, dim=1)
+                predictions = torch.argmax(outputs, dim=1)
+                
+                all_predictions.extend(predictions.cpu().numpy())
+                all_targets.extend(targets.cpu().numpy())
+                all_probabilities.extend(probabilities[:, 1].cpu().numpy())  # AUC needs probabilities
+        
+        # Calculate epoch metrics
+        avg_loss = total_loss / len(train_loader)
+        accuracy = accuracy_score(all_targets, all_predictions)
+        balanced_accuracy = balanced_accuracy_score(all_targets, all_predictions)
+        
+        try:
+            auc = roc_auc_score(all_targets, all_probabilities) if len(set(all_targets)) > 1 else 0.0
+        except:
+            auc = 0.0
+        
+        f1 = f1_score(all_targets, all_predictions, average='weighted')
+        avg_grad_norm = np.mean(gradient_norms) if gradient_norms else 0.0
+        
+        return {
+            'loss': avg_loss,
+            'accuracy': accuracy,
+            'balanced_accuracy': balanced_accuracy,
+            'auc': auc,
+            'f1': f1,
+            'gradient_norm': avg_grad_norm
+        }
+    
+    def _validate_epoch(self, val_loader: DataLoader, epoch: int) -> Dict[str, float]:
+        """Validate for one epoch with comprehensive metrics."""
+        
+        self.model.eval()
+        
+        total_loss = 0.0
+        all_predictions = []
+        all_targets = []
+        all_probabilities = []
+        
+        with torch.no_grad():
+            for batch in val_loader:
+                if self.model_type == 'multimodal':
+                    fmri_data, smri_data, targets = batch
+                    fmri_data = fmri_data.to(self.device)
+                    smri_data = smri_data.to(self.device)
+                    targets = targets.to(self.device)
+                    outputs = self.model(fmri_data, smri_data)
+                else:
+                    inputs, targets = batch
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                    outputs = self.model(inputs)
+                
+                loss = self.criterion(outputs, targets)
+                total_loss += loss.item()
+                
+                probabilities = torch.softmax(outputs, dim=1)
+                predictions = torch.argmax(outputs, dim=1)
+                
+                all_predictions.extend(predictions.cpu().numpy())
+                all_targets.extend(targets.cpu().numpy())
+                all_probabilities.extend(probabilities[:, 1].cpu().numpy())
+        
+        # Calculate metrics
+        avg_loss = total_loss / len(val_loader)
+        accuracy = accuracy_score(all_targets, all_predictions)
+        balanced_accuracy = balanced_accuracy_score(all_targets, all_predictions)
+        
+        try:
+            auc = roc_auc_score(all_targets, all_probabilities) if len(set(all_targets)) > 1 else 0.0
+        except:
+            auc = 0.0
+        
+        f1 = f1_score(all_targets, all_predictions, average='weighted')
+        
+        # Store detailed predictions for analysis
+        self.detailed_predictions[f'epoch_{epoch}'] = {
+            'targets': all_targets,
+            'predictions': all_predictions,
+            'probabilities': all_probabilities
         }
         
-        # Add model-specific info if available
-        if hasattr(self.model, 'get_model_info'):
-            summary.update(self.model.get_model_info())
-            
-        return summary 
+        return {
+            'loss': avg_loss,
+            'accuracy': accuracy,
+            'balanced_accuracy': balanced_accuracy,
+            'auc': auc,
+            'f1': f1
+        }
+    
+    def _record_epoch_metrics(
+        self, 
+        train_metrics: Dict[str, float], 
+        val_metrics: Dict[str, float],
+        epoch_time: float,
+        epoch: int
+    ):
+        """Record comprehensive epoch metrics."""
+        
+        self.training_history['train_loss'].append(train_metrics['loss'])
+        self.training_history['val_loss'].append(val_metrics['loss'])
+        self.training_history['train_accuracy'].append(train_metrics['accuracy'])
+        self.training_history['val_accuracy'].append(val_metrics['accuracy'])
+        self.training_history['train_balanced_accuracy'].append(train_metrics['balanced_accuracy'])
+        self.training_history['val_balanced_accuracy'].append(val_metrics['balanced_accuracy'])
+        self.training_history['train_auc'].append(train_metrics['auc'])
+        self.training_history['val_auc'].append(val_metrics['auc'])
+        self.training_history['train_f1'].append(train_metrics['f1'])
+        self.training_history['val_f1'].append(val_metrics['f1'])
+        self.training_history['learning_rates'].append(self.optimizer.param_groups[0]['lr'])
+        self.training_history['epoch_times'].append(epoch_time)
+        self.training_history['gradient_norms'].append(train_metrics['gradient_norm'])
+    
+    def _save_training_analysis(self, save_dir: Path):
+        """Save comprehensive training analysis."""
+        
+        # Save training history as JSON
+        history_path = save_dir / f'{self.experiment_name}_training_history.json'
+        with open(history_path, 'w') as f:
+            json.dump(self.training_history, f, indent=2, default=str)
+        
+        # Save detailed predictions
+        predictions_path = save_dir / f'{self.experiment_name}_detailed_predictions.json'
+        with open(predictions_path, 'w') as f:
+            json.dump(self.detailed_predictions, f, indent=2, default=str)
+        
+        logger.info(f"💾 Training analysis saved to: {save_dir}")
+    
+    def evaluate_final(self, test_loader: DataLoader) -> Dict[str, float]:
+        """
+        Comprehensive final evaluation with all scientific metrics.
+        """
+        
+        self.model.eval()
+        
+        all_predictions = []
+        all_targets = []
+        all_probabilities = []
+        
+        with torch.no_grad():
+            for batch in test_loader:
+                if self.model_type == 'multimodal':
+                    fmri_data, smri_data, targets = batch
+                    fmri_data = fmri_data.to(self.device)
+                    smri_data = smri_data.to(self.device)
+                    targets = targets.to(self.device)
+                    outputs = self.model(fmri_data, smri_data)
+                else:
+                    inputs, targets = batch
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                    outputs = self.model(inputs)
+                
+                probabilities = torch.softmax(outputs, dim=1)
+                predictions = torch.argmax(outputs, dim=1)
+                
+                all_predictions.extend(predictions.cpu().numpy())
+                all_targets.extend(targets.cpu().numpy())
+                all_probabilities.extend(probabilities[:, 1].cpu().numpy())
+        
+        # Calculate comprehensive metrics
+        accuracy = accuracy_score(all_targets, all_predictions)
+        balanced_accuracy = balanced_accuracy_score(all_targets, all_predictions)
+        
+        try:
+            auc = roc_auc_score(all_targets, all_probabilities) if len(set(all_targets)) > 1 else 0.0
+        except:
+            auc = 0.0
+        
+        f1 = f1_score(all_targets, all_predictions, average='weighted')
+        precision = precision_score(all_targets, all_predictions, average='weighted')
+        recall = recall_score(all_targets, all_predictions, average='weighted')
+        
+        # Generate classification report
+        class_report = classification_report(all_targets, all_predictions, output_dict=True)
+        
+        # Confusion matrix
+        cm = confusion_matrix(all_targets, all_predictions)
+        
+        return {
+            'accuracy': accuracy,
+            'balanced_accuracy': balanced_accuracy,
+            'auc': auc,
+            'f1': f1,
+            'precision': precision,
+            'recall': recall,
+            'classification_report': class_report,
+            'confusion_matrix': cm.tolist(),
+            'predictions': all_predictions,
+            'targets': all_targets,
+            'probabilities': all_probabilities
+        }
+
+
+# Backwards compatibility - maintain the original Trainer class
+class Trainer(ComprehensiveTrainer):
+    """Original Trainer class for backwards compatibility."""
+    pass 
