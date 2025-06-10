@@ -1296,21 +1296,19 @@ class ThesisExperiments:
         X_val = scaler.transform(X_val)
         X_test = scaler.transform(X_test)
         
-        # Convert to tensors
-        train_dataset = TensorDataset(
-            torch.FloatTensor(X_train), 
-            torch.LongTensor(y_train)
-        )
-        val_dataset = TensorDataset(
-            torch.FloatTensor(X_val), 
-            torch.LongTensor(y_val)
-        )
-        test_dataset = TensorDataset(
-            torch.FloatTensor(X_test), 
-            torch.LongTensor(y_test)
-        )
+        # Convert to tensors and move to device immediately
+        X_train_tensor = torch.FloatTensor(X_train).to(self.device)
+        X_val_tensor = torch.FloatTensor(X_val).to(self.device)
+        X_test_tensor = torch.FloatTensor(X_test).to(self.device)
+        y_train_tensor = torch.LongTensor(y_train).to(self.device)
+        y_val_tensor = torch.LongTensor(y_val).to(self.device)
+        y_test_tensor = torch.LongTensor(y_test).to(self.device)
         
         # Create data loaders
+        train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+        val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
+        test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+        
         train_loader = DataLoader(train_dataset, batch_size=params['batch_size'], shuffle=True)
         val_loader = DataLoader(val_dataset, batch_size=params['batch_size'], shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=params['batch_size'], shuffle=False)
@@ -1444,7 +1442,14 @@ class ThesisExperiments:
                 'fmri_data': fmri_data,
                 'smri_data': smri_data,
                 'labels': labels,
-                'n_subjects': n_subjects
+                'n_subjects': n_subjects,
+                'num_matched_subjects': n_subjects,  # Add this field for compatibility
+                'fmri_features': fmri_data,
+                'smri_features': smri_data,
+                'fmri_labels': labels,
+                'smri_labels': labels,
+                'fmri_subject_ids': [f"subject_{i:05d}" for i in range(n_subjects)],
+                'smri_subject_ids': [f"subject_{i:05d}" for i in range(n_subjects)]
             }
         else:
             # Google Colab environment - load real data
@@ -1880,13 +1885,13 @@ class ThesisExperiments:
             X_val = scaler.transform(X_val)
             X_test = scaler.transform(X_test)
         
-        # Convert to tensors
-        X_train_tensor = torch.FloatTensor(X_train)
-        X_val_tensor = torch.FloatTensor(X_val)
-        X_test_tensor = torch.FloatTensor(X_test)
-        y_train_tensor = torch.LongTensor(y_train)
-        y_val_tensor = torch.LongTensor(y_val)
-        y_test_tensor = torch.LongTensor(y_test)
+        # Convert to tensors and move to device immediately
+        X_train_tensor = torch.FloatTensor(X_train).to(self.device)
+        X_val_tensor = torch.FloatTensor(X_val).to(self.device)
+        X_test_tensor = torch.FloatTensor(X_test).to(self.device)
+        y_train_tensor = torch.LongTensor(y_train).to(self.device)
+        y_val_tensor = torch.LongTensor(y_val).to(self.device)
+        y_test_tensor = torch.LongTensor(y_test).to(self.device)
         
         # Create data loaders
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)

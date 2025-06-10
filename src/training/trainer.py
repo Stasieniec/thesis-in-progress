@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class ComprehensiveTrainer:
     """Enhanced trainer with exhaustive scientific metrics tracking."""
-    
+
     def __init__(
         self,
         model: nn.Module,
@@ -195,17 +195,21 @@ class ComprehensiveTrainer:
         all_probabilities = []
         gradient_norms = []
         
-        for batch_idx, batch in enumerate(train_loader):
+        for i, batch in enumerate(train_loader):
+            # **CRITICAL FIX**: Ensure proper device handling
             if self.model_type == 'multimodal':
+                # Multimodal batch: (fmri_data, smri_data, targets)
                 fmri_data, smri_data, targets = batch
-                fmri_data = fmri_data.to(self.device)
-                smri_data = smri_data.to(self.device)
-                targets = targets.to(self.device)
+                fmri_data = fmri_data.to(self.device, non_blocking=True)
+                smri_data = smri_data.to(self.device, non_blocking=True)
+                targets = targets.to(self.device, non_blocking=True)
+                inputs = (fmri_data, smri_data)
             else:
+                # Single modality batch: (inputs, targets)
                 inputs, targets = batch
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-            
+                inputs = inputs.to(self.device, non_blocking=True)
+                targets = targets.to(self.device, non_blocking=True)
+
             self.optimizer.zero_grad()
             
             # Forward pass with mixed precision if available
@@ -216,9 +220,9 @@ class ComprehensiveTrainer:
                     else:
                         outputs = self.model(inputs)
                     loss = self.criterion(outputs, targets)
-                
+
                 self.scaler.scale(loss).backward()
-                
+
                 # Gradient clipping
                 if hasattr(self.config, 'gradient_clip_norm'):
                     self.scaler.unscale_(self.optimizer)
@@ -227,7 +231,7 @@ class ComprehensiveTrainer:
                         self.config.gradient_clip_norm
                     )
                     gradient_norms.append(grad_norm.item())
-                
+
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
             else:
@@ -236,7 +240,7 @@ class ComprehensiveTrainer:
                 else:
                     outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
-                
+
                 loss.backward()
                 
                 # Gradient clipping
@@ -248,7 +252,7 @@ class ComprehensiveTrainer:
                     gradient_norms.append(grad_norm.item())
                 
                 self.optimizer.step()
-            
+
             # Collect metrics
             total_loss += loss.item()
             
@@ -272,7 +276,7 @@ class ComprehensiveTrainer:
         
         f1 = f1_score(all_targets, all_predictions, average='weighted')
         avg_grad_norm = np.mean(gradient_norms) if gradient_norms else 0.0
-        
+
         return {
             'loss': avg_loss,
             'accuracy': accuracy,
@@ -291,7 +295,7 @@ class ComprehensiveTrainer:
         all_predictions = []
         all_targets = []
         all_probabilities = []
-        
+
         with torch.no_grad():
             for batch in val_loader:
                 if self.model_type == 'multimodal':
@@ -315,7 +319,7 @@ class ComprehensiveTrainer:
                 all_predictions.extend(predictions.cpu().numpy())
                 all_targets.extend(targets.cpu().numpy())
                 all_probabilities.extend(probabilities[:, 1].cpu().numpy())
-        
+
         # Calculate metrics
         avg_loss = total_loss / len(val_loader)
         accuracy = accuracy_score(all_targets, all_predictions)

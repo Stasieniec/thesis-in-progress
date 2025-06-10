@@ -122,7 +122,7 @@ python scripts/thesis_experiments.py --quick_test
 ```
 
 ### **Only Baseline Models**
-```bash
+   ```bash
 python scripts/thesis_experiments.py --baselines_only
 ```
 
