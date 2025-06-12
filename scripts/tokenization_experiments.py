@@ -60,7 +60,7 @@ try:
 except ImportError as e:
     PROJECT_MODULES_AVAILABLE = False
     print(f"⚠️ Project modules not available: {e}")
-    print("Will use synthetic data for demonstration")
+    print("Script requires project modules to load real data")
 
 # =============================================================================
 # TOKENIZATION STRATEGIES ANALYSIS
@@ -466,90 +466,87 @@ class TokenizationExperiment:
         self.results = {}
     
     def load_data(self) -> Dict[str, np.ndarray]:
-        """Load fMRI and sMRI data using the same method as thesis_experiments.py."""
+        """Load fMRI and sMRI data - requires real data, no synthetic fallbacks."""
         print("📊 Loading multimodal data...")
         
-        # Check if we're in a local testing environment (same as thesis_experiments.py)
+        # Check if we're in Google Colab environment
         if not Path('/content/drive').exists():
-            # Local testing - create mock data
-            print("🔬 Local testing mode - creating synthetic data")
-            
-            n_subjects = 200
-            fmri_data = np.random.randn(n_subjects, 19900).astype(np.float32)
-            smri_data = np.random.randn(n_subjects, 800).astype(np.float32)
-            labels = np.random.randint(0, 2, n_subjects)
-            
-            # Add some structure to make it more realistic
-            fmri_data = StandardScaler().fit_transform(fmri_data)
-            smri_data = StandardScaler().fit_transform(smri_data)
+            raise RuntimeError(
+                "❌ This script requires Google Colab with mounted Drive.\n"
+                "Please run in Google Colab and mount your drive first:\n"
+                "  from google.colab import drive\n"
+                "  drive.mount('/content/drive')"
+            )
+        
+        # Ensure project modules are available
+        if not PROJECT_MODULES_AVAILABLE:
+            raise ImportError(
+                "❌ Project modules not available.\n"
+                "Make sure you're running from the thesis-in-progress directory:\n"
+                "  !git clone https://github.com/Stasieniec/thesis-in-progress.git\n"
+                "  %cd thesis-in-progress\n"
+                "  !pip install -r requirements.txt -q"
+            )
+        
+        # Debug: Check if data paths exist
+        smri_path = Path("/content/drive/MyDrive/processed_smri_data_improved")
+        fmri_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200")
+        pheno_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv")
+        
+        print(f"🔍 Checking data paths:")
+        print(f"   sMRI path exists: {smri_path.exists()}")
+        if smri_path.exists():
+            expected_files = ['features.npy', 'labels.npy', 'subject_ids.npy', 'feature_names.txt']
+            for file in expected_files:
+                file_path = smri_path / file
+                print(f"   {file}: {file_path.exists()}")
+        print(f"   fMRI path exists: {fmri_path.exists()}")
+        print(f"   Phenotypic file exists: {pheno_path.exists()}")
+        
+        # Load real data - fail if not available
+        try:
+            matched_data = get_matched_datasets(
+                fmri_roi_dir="/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200",
+                smri_data_path="/content/drive/MyDrive/processed_smri_data_improved",
+                phenotypic_file="/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv",
+                verbose=True
+            )
             
             return {
-                'fmri_data': fmri_data,
-                'smri_data': smri_data,
-                'labels': labels,
-                'subject_ids': [f'synthetic_{i:04d}' for i in range(n_subjects)]
+                'fmri_data': matched_data['fmri_features'],
+                'smri_data': matched_data['smri_features'], 
+                'labels': matched_data['fmri_labels'],
+                'subject_ids': matched_data.get('fmri_subject_ids', [])
             }
-        
-        # Google Colab environment - load real data (same as thesis_experiments.py)
-        if PROJECT_MODULES_AVAILABLE:
-            try:
-                # Debug: Check if data paths exist
-                smri_path = Path("/content/drive/MyDrive/processed_smri_data_improved")
-                fmri_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200")
-                pheno_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv")
-                
-                print(f"🔍 Checking data paths:")
-                print(f"   sMRI path exists: {smri_path.exists()}")
-                if smri_path.exists():
-                    expected_files = ['features.npy', 'labels.npy', 'subject_ids.npy', 'feature_names.txt']
-                    for file in expected_files:
-                        file_path = smri_path / file
-                        print(f"   {file}: {file_path.exists()}")
-                print(f"   fMRI path exists: {fmri_path.exists()}")
-                print(f"   Phenotypic file exists: {pheno_path.exists()}")
-                
-                matched_data = get_matched_datasets(
-                    fmri_roi_dir="/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200",
-                    smri_data_path="/content/drive/MyDrive/processed_smri_data_improved",
-                    phenotypic_file="/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv",
-                    verbose=True
-                )
-                
-                return {
-                    'fmri_data': matched_data['fmri_features'],
-                    'smri_data': matched_data['smri_features'], 
-                    'labels': matched_data['fmri_labels'],
-                    'subject_ids': matched_data.get('fmri_subject_ids', [])
-                }
-            except Exception as e:
-                print(f"⚠️ Failed to load real data: {e}")
-                print("This might be due to:")
-                print("  1. Data not yet processed - run sMRI extraction first:")
-                print("     !python scripts/improved_smri_extraction_new.py")
-                print("  2. Different data path - check your Google Drive structure")
-                print("  3. Missing files in processed_smri_data_improved/")
-                print("     Expected files: features.npy, labels.npy, subject_ids.npy, feature_names.txt")
-                print("Falling back to synthetic data...")
-        
-        # Fallback: Synthetic data for testing
-        print("🎲 Generating synthetic data for demonstration...")
-        n_subjects = 200
-        
-        # Synthetic data matching real dimensions
-        fmri_data = np.random.randn(n_subjects, 19900).astype(np.float32)
-        smri_data = np.random.randn(n_subjects, 800).astype(np.float32)
-        labels = np.random.randint(0, 2, n_subjects)
-        
-        # Add some structure to make it more realistic
-        fmri_data = StandardScaler().fit_transform(fmri_data)
-        smri_data = StandardScaler().fit_transform(smri_data)
-        
-        return {
-            'fmri_data': fmri_data,
-            'smri_data': smri_data,
-            'labels': labels,
-            'subject_ids': [f'synthetic_{i:04d}' for i in range(n_subjects)]
-        }
+            
+        except Exception as e:
+            error_msg = f"""
+❌ FAILED TO LOAD REAL DATA: {e}
+
+🔧 TROUBLESHOOTING STEPS:
+
+1. 📁 Check if sMRI data has been processed:
+   Expected directory: /content/drive/MyDrive/processed_smri_data_improved/
+   Expected files: features.npy, labels.npy, subject_ids.npy, feature_names.txt
+   
+   If missing, run sMRI extraction first:
+   !python scripts/improved_smri_extraction_new.py
+
+2. 📂 Verify your Google Drive structure:
+   /content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200/
+   /content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv
+   /content/drive/MyDrive/processed_smri_data_improved/
+
+3. 🔄 Ensure Drive is properly mounted:
+   from google.colab import drive
+   drive.mount('/content/drive')
+
+4. 📋 Run your normal thesis experiments first to verify data:
+   !python scripts/thesis_experiments.py --quick_test
+
+❌ TOKENIZATION EXPERIMENTS REQUIRE REAL DATA - NO SYNTHETIC FALLBACKS
+"""
+            raise RuntimeError(error_msg) from e
     
     def create_data_splits(self, data: Dict[str, np.ndarray], test_size: float = 0.2, 
                           val_size: float = 0.1, random_state: int = 42) -> Dict[str, Dict[str, np.ndarray]]:
