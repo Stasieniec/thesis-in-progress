@@ -489,7 +489,7 @@ class TokenizationExperiment:
             )
         
         # Debug: Check if data paths exist
-        smri_path = Path("/content/drive/MyDrive/processed_smri_data_improved")
+        smri_path = Path("/content/drive/MyDrive/processed_smri_data")
         fmri_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200")
         pheno_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv")
         
@@ -507,7 +507,7 @@ class TokenizationExperiment:
         try:
             matched_data = get_matched_datasets(
                 fmri_roi_dir="/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200",
-                smri_data_path="/content/drive/MyDrive/processed_smri_data_improved",
+                smri_data_path="/content/drive/MyDrive/processed_smri_data",
                 phenotypic_file="/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv",
                 verbose=True
             )
@@ -526,7 +526,7 @@ class TokenizationExperiment:
 🔧 TROUBLESHOOTING STEPS:
 
 1. 📁 Check if sMRI data has been processed:
-   Expected directory: /content/drive/MyDrive/processed_smri_data_improved/
+   Expected directory: /content/drive/MyDrive/processed_smri_data/
    Expected files: features.npy, labels.npy, subject_ids.npy, feature_names.txt
    
    If missing, run sMRI extraction first:
@@ -535,7 +535,7 @@ class TokenizationExperiment:
 2. 📂 Verify your Google Drive structure:
    /content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200/
    /content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv
-   /content/drive/MyDrive/processed_smri_data_improved/
+   /content/drive/MyDrive/processed_smri_data/
 
 3. 🔄 Ensure Drive is properly mounted:
    from google.colab import drive
