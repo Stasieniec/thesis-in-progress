@@ -55,10 +55,10 @@ drive.mount('/content/drive')
 
 ## 📚 Documentation
 
-🎓 **[Comprehensive Experiment Guide](COMPREHENSIVE_EXPERIMENT_GUIDE.md)** - **MAIN GUIDE** for thesis results  
-📄 **[Leave-Site-Out Guide](COLAB_LEAVE_SITE_OUT.md)** - Site-based cross-validation  
+🎓 **[Comprehensive Experiment Guide](context_files/COMPREHENSIVE_EXPERIMENT_GUIDE.md)** - **MAIN GUIDE** for thesis results  
+📄 **[Leave-Site-Out Guide](context_files/COLAB_LEAVE_SITE_OUT.md)** - Site-based cross-validation  
 📖 **[Complete Experiment Guide](docs/EXPERIMENT_GUIDE.md)** - Individual experiment setup  
-📄 **[Colab Guide](COLAB_GUIDE.md)** - Google Colab specific instructions  
+📄 **[Colab Guide](context_files/COLAB_GUIDE.md)** - Google Colab specific instructions  
 
 ## 🏗️ Repository Structure
 
