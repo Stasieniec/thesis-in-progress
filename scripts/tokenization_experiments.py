@@ -466,12 +466,48 @@ class TokenizationExperiment:
         self.results = {}
     
     def load_data(self) -> Dict[str, np.ndarray]:
-        """Load fMRI and sMRI data."""
+        """Load fMRI and sMRI data using the same method as thesis_experiments.py."""
         print("📊 Loading multimodal data...")
         
+        # Check if we're in a local testing environment (same as thesis_experiments.py)
+        if not Path('/content/drive').exists():
+            # Local testing - create mock data
+            print("🔬 Local testing mode - creating synthetic data")
+            
+            n_subjects = 200
+            fmri_data = np.random.randn(n_subjects, 19900).astype(np.float32)
+            smri_data = np.random.randn(n_subjects, 800).astype(np.float32)
+            labels = np.random.randint(0, 2, n_subjects)
+            
+            # Add some structure to make it more realistic
+            fmri_data = StandardScaler().fit_transform(fmri_data)
+            smri_data = StandardScaler().fit_transform(smri_data)
+            
+            return {
+                'fmri_data': fmri_data,
+                'smri_data': smri_data,
+                'labels': labels,
+                'subject_ids': [f'synthetic_{i:04d}' for i in range(n_subjects)]
+            }
+        
+        # Google Colab environment - load real data (same as thesis_experiments.py)
         if PROJECT_MODULES_AVAILABLE:
-            # Load real data
             try:
+                # Debug: Check if data paths exist
+                smri_path = Path("/content/drive/MyDrive/processed_smri_data_improved")
+                fmri_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200")
+                pheno_path = Path("/content/drive/MyDrive/b_data/ABIDE_pcp/Phenotypic_V1_0b_preprocessed1.csv")
+                
+                print(f"🔍 Checking data paths:")
+                print(f"   sMRI path exists: {smri_path.exists()}")
+                if smri_path.exists():
+                    expected_files = ['features.npy', 'labels.npy', 'subject_ids.npy', 'feature_names.txt']
+                    for file in expected_files:
+                        file_path = smri_path / file
+                        print(f"   {file}: {file_path.exists()}")
+                print(f"   fMRI path exists: {fmri_path.exists()}")
+                print(f"   Phenotypic file exists: {pheno_path.exists()}")
+                
                 matched_data = get_matched_datasets(
                     fmri_roi_dir="/content/drive/MyDrive/b_data/ABIDE_pcp/cpac/filt_noglobal/rois_cc200",
                     smri_data_path="/content/drive/MyDrive/processed_smri_data_improved",
@@ -487,9 +523,15 @@ class TokenizationExperiment:
                 }
             except Exception as e:
                 print(f"⚠️ Failed to load real data: {e}")
+                print("This might be due to:")
+                print("  1. Data not yet processed - run sMRI extraction first:")
+                print("     !python scripts/improved_smri_extraction_new.py")
+                print("  2. Different data path - check your Google Drive structure")
+                print("  3. Missing files in processed_smri_data_improved/")
+                print("     Expected files: features.npy, labels.npy, subject_ids.npy, feature_names.txt")
                 print("Falling back to synthetic data...")
         
-        # Synthetic data for testing
+        # Fallback: Synthetic data for testing
         print("🎲 Generating synthetic data for demonstration...")
         n_subjects = 200
         
